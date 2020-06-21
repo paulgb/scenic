@@ -1,6 +1,5 @@
 use scenic::prelude::*;
 
-
 pub fn main() {
     let p1 = Polygon::new(
         vec![
@@ -9,7 +8,7 @@ pub fn main() {
             Point::new(15., 10.),
             Point::new(11., 15.),
         ],
-        1.
+        1.,
     );
     let p2 = Polygon::new(
         vec![
@@ -18,24 +17,20 @@ pub fn main() {
             Point::new(15., 12.),
             Point::new(13., 13.),
         ],
-        2.
+        2.,
     );
     let p3 = Polygon::new(
-        vec![
-            Point::new(8., 5.),
-            Point::new(10., 11.),
-            Point::new(6., 8.),
-        ],
-        3.
+        vec![Point::new(8., 5.), Point::new(10., 11.), Point::new(6., 8.)],
+        3.,
     );
     let p4 = Polygon::new(
         vec![
             Point::new(12., 7.),
             Point::new(7., 13.),
             Point::new(8., 9.),
-            Point::new(6., 5.)
+            Point::new(6., 5.),
         ],
-        4.
+        4.,
     );
 
     let mut d = DebugDraw::new();

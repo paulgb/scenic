@@ -22,7 +22,10 @@ impl LineSlope {
 }
 
 #[derive(Debug)]
-pub struct Line<T> where T: std::fmt::Debug {
+pub struct Line<T>
+where
+    T: std::fmt::Debug,
+{
     pub start: Point,
     pub end: Point,
     pub orientation: LineOrientation,
@@ -73,7 +76,10 @@ impl<T: std::fmt::Debug> Line<T> {
         let self_slope = self.slope().unwrap();
         let other_slope = other.slope().unwrap();
         let net_slope = -self_slope + other_slope;
-        let y_delta = self.start.y - other.y_at(self.start.x).expect("Unhandled vertical line (1).");
+        let y_delta = self.start.y
+            - other
+                .y_at(self.start.x)
+                .expect("Unhandled vertical line (1).");
         let x_int = self.start.x + (y_delta / net_slope);
         if (self.start.x <= x_int)
             && (x_int <= self.end.x)

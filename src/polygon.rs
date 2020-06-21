@@ -2,7 +2,7 @@ use crate::point::Point;
 
 pub struct Polygon {
     pub points: Vec<Point>,
-    pub z: f64
+    pub z: f64,
 }
 
 impl Polygon {

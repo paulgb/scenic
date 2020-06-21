@@ -1,8 +1,8 @@
 use svg::node::element;
 use svg::node::element::path::Data;
 use svg::node::Text;
-use svg::Node;
 use svg::Document;
+use svg::Node;
 
 use crate::line::Line;
 use crate::point::Point;
@@ -23,16 +23,22 @@ struct Bounds {
     right: f64,
 }
 
-pub struct DebugGroupBuilder<'a, T> where T: Node {
+pub struct DebugGroupBuilder<'a, T>
+where
+    T: Node,
+{
     debug_draw: &'a mut DebugDraw,
     element: Option<T>,
 }
 
-impl<'a, T> DebugGroupBuilder<'a, T> where T: Node {
+impl<'a, T> DebugGroupBuilder<'a, T>
+where
+    T: Node,
+{
     pub fn new(debug_draw: &'a mut DebugDraw, element: T) -> DebugGroupBuilder<'a, T> {
         DebugGroupBuilder {
             debug_draw,
-            element: Some(element)
+            element: Some(element),
         }
     }
 
@@ -52,7 +58,10 @@ impl<'a, T> DebugGroupBuilder<'a, T> where T: Node {
     }
 }
 
-impl<'a, T> Drop for DebugGroupBuilder<'a, T> where T: Node {
+impl<'a, T> Drop for DebugGroupBuilder<'a, T>
+where
+    T: Node,
+{
     fn drop(&mut self) {
         let mut doc = self.debug_draw.doc.take().unwrap();
         doc.append(self.element.take().unwrap());
@@ -126,7 +135,10 @@ impl DebugDraw {
         DebugGroupBuilder::new(self, c)
     }
 
-    pub fn add_line<'a, T: std::fmt::Debug>(&'a mut self, line: &Line<T>) -> DebugGroupBuilder<'a, element::Line> {
+    pub fn add_line<'a, T: std::fmt::Debug>(
+        &'a mut self,
+        line: &Line<T>,
+    ) -> DebugGroupBuilder<'a, element::Line> {
         let svg_line = element::Line::new()
             .set("x1", line.start.x)
             .set("y1", line.start.y)
@@ -158,7 +170,7 @@ impl DebugDraw {
             .set("stroke-width", STROKE_WIDTH)
             .set("fill", POLY_FILL)
             .set("stroke", STROKE);
-        
+
         DebugGroupBuilder::new(self, path)
         //self.doc = Some(self.doc.take().unwrap().add(path));
     }
