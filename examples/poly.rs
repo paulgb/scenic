@@ -40,11 +40,16 @@ pub fn main() {
     scene.add_poly(p3);
     scene.add_poly(p4);
 
-    let mut d = DebugDraw::new();
-
     let mut scan_state = ScanState::new(&scene);
-    scan_state.step();
 
-    d.add_scan_state(&scan_state);
-    d.save("scene.svg");
+    let mut i = 1;
+    while !scan_state.done() {
+        let mut d = DebugDraw::new();
+
+        d.add_scan_state(&scan_state);
+        d.save(&format!("step_{:0>3}.svg", i));
+        i += 1;
+
+        scan_state.step();
+    }
 }

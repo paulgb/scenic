@@ -1,6 +1,5 @@
 use crate::line::Line;
 use crate::point::Point;
-use crate::polygon::Polygon;
 use std::collections::BTreeSet;
 
 type LineCollection<'a> = BTreeSet<&'a Line>;
@@ -20,13 +19,4 @@ impl<'a> Vertex<'a> {
             end_lines: LineCollection::new(),
         }
     }
-    /*
-    pub fn new(point: Point, start_lines: LineCollection<'a>, end_lines: LineCollection<'a>) -> Vertex<'a> {
-        Vertex {
-            point,
-            start_lines,
-            end_lines
-        }
-    }
-    */
 }
