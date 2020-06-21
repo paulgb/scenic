@@ -1,4 +1,5 @@
 use crate::point::Point;
+use crate::polygon::Polygon;
 
 #[derive(Debug, PartialEq)]
 pub enum LineOrientation {
@@ -22,30 +23,56 @@ impl LineSlope {
 }
 
 #[derive(Debug)]
-pub struct Line<T>
-where
-    T: std::fmt::Debug,
-{
+pub struct Line {
     pub start: Point,
     pub end: Point,
     pub orientation: LineOrientation,
-    pub meta: T,
+    pub polygon: *const Polygon,
 }
 
-impl<T: std::fmt::Debug> Line<T> {
-    pub fn new(start: Point, end: Point, meta: T) -> Line<T> {
+impl PartialEq for Line {
+    fn eq(&self, other: &Line) -> bool {
+        self.cmp_repr().eq(&other.cmp_repr())
+    }
+}
+
+impl Eq for Line {
+}
+
+impl Ord for Line {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(&other).expect("Invalid ordering of Lines.")
+    }
+}
+
+impl PartialOrd for Line {
+    fn partial_cmp(&self, other: &Line) -> Option<std::cmp::Ordering> {
+        self.cmp_repr().partial_cmp(&other.cmp_repr())
+    }
+}
+
+impl Line {
+    fn cmp_repr(&self) -> (Point, Point, *const Polygon) {
+        (self.start, self.end, self.polygon)
+    }
+
+    pub fn new(start: Point, end: Point) -> Line {
+        Line::new_with_poly(start, end, std::ptr::null())
+    }
+
+    pub fn new_with_poly(start: Point, end: Point, polygon: *const Polygon) -> Line {
         if start < end {
             Line {
                 start,
                 end,
-                meta,
+                polygon,
                 orientation: LineOrientation::Top,
             }
         } else {
             Line {
                 start: end,
                 end: start,
-                meta,
+                polygon,
                 orientation: LineOrientation::Bottom,
             }
         }
@@ -72,7 +99,7 @@ impl<T: std::fmt::Debug> Line<T> {
         }
     }
 
-    pub fn intersect(&self, other: &Line<T>) -> Option<Point> {
+    pub fn intersect(&self, other: &Line) -> Option<Point> {
         let self_slope = self.slope().unwrap();
         let other_slope = other.slope().unwrap();
         let net_slope = -self_slope + other_slope;
@@ -107,12 +134,12 @@ mod tests {
         let p1 = Point::new(4., 5.);
         let p2 = Point::new(6., 9.);
 
-        let l1 = Line::new(p1, p2, ());
+        let l1 = Line::new(p1, p2);
         assert_eq!(LineOrientation::Top, l1.orientation);
         assert_eq!(p1, l1.start);
         assert_eq!(p2, l1.end);
 
-        let l2 = Line::new(p2, p1, ());
+        let l2 = Line::new(p2, p1);
         assert_eq!(LineOrientation::Bottom, l2.orientation);
         assert_eq!(p1, l2.start);
         assert_eq!(p2, l2.end);
@@ -123,9 +150,9 @@ mod tests {
         let p1 = Point::new(2., 2.);
         let p2 = Point::new(4., 3.);
 
-        let l1 = Line::new(p1, p2, ());
+        let l1 = Line::new(p1, p2);
         assert_eq!(LineSlope::FiniteSlope(0.5), l1.slope());
-        let l2 = Line::new(p2, p1, ());
+        let l2 = Line::new(p2, p1);
         assert_eq!(LineSlope::FiniteSlope(0.5), l2.slope());
     }
 
@@ -134,15 +161,15 @@ mod tests {
         let p1 = Point::new(5., 6.);
         let p2 = Point::new(5., 3.);
 
-        let l1 = Line::new(p1, p2, ());
+        let l1 = Line::new(p1, p2);
         assert_eq!(LineSlope::InfiniteSlope, l1.slope());
-        let l2 = Line::new(p2, p1, ());
+        let l2 = Line::new(p2, p1);
         assert_eq!(LineSlope::InfiniteSlope, l2.slope());
     }
 
     #[test]
     fn test_y_at() {
-        let l1 = Line::new(Point::new(4., 10.), Point::new(14., 20.), ());
+        let l1 = Line::new(Point::new(4., 10.), Point::new(14., 20.));
 
         // Points at endpoints return their values.
         assert_eq!(Some(10.), l1.y_at(4.));
@@ -161,7 +188,7 @@ mod tests {
         let p1 = Point::new(5., 6.);
         let p2 = Point::new(5., 3.);
 
-        let l1 = Line::new(p1, p2, ());
+        let l1 = Line::new(p1, p2);
         assert_eq!(None, l1.y_at(4.));
         assert_eq!(None, l1.y_at(5.)); // Behavior TBD.
         assert_eq!(None, l1.y_at(6.));
@@ -169,8 +196,8 @@ mod tests {
 
     #[test]
     fn test_intersect() {
-        let l1 = Line::new(Point::new(4., 10.), Point::new(14., 20.), ());
-        let l2 = Line::new(Point::new(0., 20.), Point::new(20., 0.), ());
+        let l1 = Line::new(Point::new(4., 10.), Point::new(14., 20.));
+        let l2 = Line::new(Point::new(0., 20.), Point::new(20., 0.));
 
         assert_eq!(Some(Point::new(7., 13.)), l1.intersect(&l2));
         assert_eq!(Some(Point::new(7., 13.)), l2.intersect(&l1));
