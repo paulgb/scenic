@@ -1,5 +1,6 @@
 use scenic::prelude::*;
-use scenic::scanlines::ScanState;
+use scenic::scanlines::{LineEvent, ScanState};
+use std::collections::BTreeMap;
 
 pub fn main() {
     let p1 = Polygon::new(
@@ -41,15 +42,37 @@ pub fn main() {
     scene.add_poly(p4);
 
     let mut scan_state = ScanState::new(&scene);
+    let mut final_lines: Vec<Line> = Vec::new();
+    let mut cur_lines: BTreeMap<&Line, Point> = BTreeMap::new();
 
     let mut i = 1;
-    while !scan_state.done() {
+    loop {
+        let lines = scan_state.step();
+        let pointer = scan_state.pointer.unwrap();
+
         let mut d = DebugDraw::new();
 
+        for (line, line_event) in lines {
+            match line_event {
+                LineEvent::Begin => {
+                    cur_lines.insert(line, pointer);
+                }
+                LineEvent::End => {
+                    if let Some(from_point) = cur_lines.get(line) {
+                        final_lines.push(Line::new(*from_point, pointer));
+                        cur_lines.remove(line);
+                    }
+                }
+            }
+        }
+
         d.add_scan_state(&scan_state);
+
+        for line in &final_lines {
+            d.add_line(line).stroke("black");
+        }
+
         d.save(&format!("step_{:0>3}.svg", i));
         i += 1;
-
-        scan_state.step();
     }
 }

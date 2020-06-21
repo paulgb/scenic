@@ -51,21 +51,41 @@ pub struct ScanState<'a> {
     pub events: BinaryHeap<SceneEvent<'a>>,
 }
 
+type StepResult<'a> = Vec<(&'a Line, LineEvent)>;
+
 impl<'a> ScanState<'a> {
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> StepResult<'a> {
         let event = self.events.pop();
         if let Some(e) = event {
-            self.pointer = Some(e.point())
+            self.pointer = Some(e.point());
+
+            match e {
+                SceneEvent::VertexEvent(v) => {
+                    let mut vs: StepResult =
+                        Vec::with_capacity(v.start_lines.len() + v.end_lines.len());
+
+                    for &line in &v.start_lines {
+                        vs.push((line, LineEvent::Begin));
+                    }
+                    for &line in &v.end_lines {
+                        vs.push((line, LineEvent::End));
+                    }
+
+                    vs
+                }
+                SceneEvent::IntersectionEvent(_, line, line_event) => vec![(line, line_event)],
+            }
         } else {
-            self.pointer = None
+            self.pointer = None;
+            Vec::new()
         }
     }
 
-    pub fn done(&mut self) -> bool {
+    pub fn done(&self) -> bool {
         self.events.is_empty()
     }
 
-    pub fn new(scene: &'a Scene) -> ScanState {
+    pub fn new(scene: &Scene) -> ScanState {
         let vertices = scene.vertices();
         let mut events = BinaryHeap::with_capacity(vertices.len());
 

@@ -139,10 +139,7 @@ impl DebugDraw {
         svg_line
     }
 
-    pub fn add_line<'a, T: std::fmt::Debug>(
-        &'a mut self,
-        line: &Line,
-    ) -> DebugGroupBuilder<'a, element::Line> {
+    pub fn add_line<'a>(&'a mut self, line: &Line) -> DebugGroupBuilder<'a, element::Line> {
         let svg_line = self.line(line);
         DebugGroupBuilder::new(self, svg_line)
     }
