@@ -7,13 +7,21 @@ use svg::Node;
 use crate::line::Line;
 use crate::point::Point;
 use crate::polygon::Polygon;
+use crate::scanlines::{LineEvent, ScanState, SceneEvent};
 use crate::scene::Scene;
 
 const MARGIN: f64 = 0.1;
 const STROKE_WIDTH: usize = 2;
-const STROKE: &str = "black";
+const STROKE: &str = "#ddd";
 const POLY_FILL: &str = "none";
 const POINT_FILL: &str = "red";
+const POINT_RADIUS: f64 = 0.15;
+
+// For SceneEvent renderer.
+const VERTEX_EVENT_FILL: &str = "red";
+const POINTER_FILL: &str = "blue";
+const INTERSECTION_START_EVENT_FILL: &str = "purple";
+const INTERSECTION_ENG_EVENT_FILL: &str = "orange";
 
 #[derive(Clone)]
 struct Bounds {
@@ -76,25 +84,6 @@ pub struct DebugDraw {
     bounds: Option<Bounds>,
 }
 
-impl Drop for DebugDraw {
-    fn drop(&mut self) {
-        let bounds = self.bounds.take().expect("No bounds, empty DebugDraw?");
-
-        let width = bounds.right - bounds.left;
-        let height = bounds.bottom - bounds.top;
-        let view_box = format!(
-            "{} {} {} {}",
-            bounds.left - width * MARGIN,
-            bounds.top - height * MARGIN,
-            width * (1. + 2. * MARGIN),
-            height * (1. + 2. * MARGIN)
-        );
-        let mut doc = self.doc.take().unwrap();
-        doc = doc.set("viewBox", view_box);
-        svg::save("debug.svg", &doc).expect("Error writing.");
-    }
-}
-
 impl DebugDraw {
     pub fn new() -> DebugDraw {
         DebugDraw {
@@ -136,10 +125,7 @@ impl DebugDraw {
         DebugGroupBuilder::new(self, c)
     }
 
-    pub fn add_line<'a, T: std::fmt::Debug>(
-        &'a mut self,
-        line: &Line,
-    ) -> DebugGroupBuilder<'a, element::Line> {
+    fn line(&mut self, line: &Line) -> element::Line {
         let svg_line = element::Line::new()
             .set("x1", line.start.x)
             .set("y1", line.start.y)
@@ -150,7 +136,14 @@ impl DebugDraw {
             .set("stroke", STROKE);
         self.update_bounds(line.start);
         self.update_bounds(line.end);
+        svg_line
+    }
 
+    pub fn add_line<'a, T: std::fmt::Debug>(
+        &'a mut self,
+        line: &Line,
+    ) -> DebugGroupBuilder<'a, element::Line> {
+        let svg_line = self.line(line);
         DebugGroupBuilder::new(self, svg_line)
     }
 
@@ -188,5 +181,83 @@ impl DebugDraw {
         }
 
         DebugGroupBuilder::new(self, group)
+    }
+
+    fn point_circle(&mut self, point: Point, fill: &str) -> element::Circle {
+        self.update_bounds(point);
+        element::Circle::new()
+            .set("cx", point.x)
+            .set("cy", point.y)
+            .set("fill", fill)
+            .set("r", POINT_RADIUS)
+    }
+
+    pub fn add_scan_state<'a>(
+        &'a mut self,
+        state: &ScanState,
+    ) -> DebugGroupBuilder<'a, element::Group> {
+        let mut group: element::Group = element::Group::new();
+
+        let mut queue_group: element::Group = element::Group::new();
+
+        for event in &state.events {
+            let g = match event {
+                SceneEvent::VertexEvent(v) => {
+                    let mut g = element::Group::new();
+
+                    if !v.start_lines.is_empty() {
+                        let mut start_group = element::Group::new().set("class", "starting");
+                        for line in &v.start_lines {
+                            start_group = start_group.add(self.line(line));
+                        }
+                        g = g.add(start_group);
+                    }
+
+                    if !v.end_lines.is_empty() {
+                        let mut end_group = element::Group::new().set("class", "ending");
+                        for line in &v.end_lines {
+                            end_group = end_group.add(self.line(line));
+                        }
+                        g = g.add(end_group);
+                    }
+
+                    g = g.add(self.point_circle(v.point, VERTEX_EVENT_FILL));
+
+                    g
+                }
+                SceneEvent::IntersectionEvent(p, line, line_event) => {
+                    let g = element::Group::new();
+                    // g
+                    unimplemented!()
+                }
+            };
+
+            queue_group = queue_group.add(g);
+        }
+
+        if let Some(p) = state.pointer {
+            queue_group = queue_group.add(self.point_circle(p, POINTER_FILL))
+        }
+
+        group = group.add(queue_group);
+
+        DebugGroupBuilder::new(self, group)
+    }
+
+    pub fn save(&mut self, filename: &str) {
+        let bounds = self.bounds.take().expect("No bounds, empty DebugDraw?");
+
+        let width = bounds.right - bounds.left;
+        let height = bounds.bottom - bounds.top;
+        let view_box = format!(
+            "{} {} {} {}",
+            bounds.left - width * MARGIN,
+            bounds.top - height * MARGIN,
+            width * (1. + 2. * MARGIN),
+            height * (1. + 2. * MARGIN)
+        );
+        let mut doc = self.doc.take().unwrap();
+        doc = doc.set("viewBox", view_box);
+        svg::save(filename, &doc).expect("Error writing.");
     }
 }

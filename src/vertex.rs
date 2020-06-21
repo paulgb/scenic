@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 
 type LineCollection<'a> = BTreeSet<&'a Line>;
 
+#[derive(PartialEq, PartialOrd, Ord, Eq)]
 pub struct Vertex<'a> {
     pub point: Point,
     pub start_lines: LineCollection<'a>,

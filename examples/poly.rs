@@ -1,4 +1,5 @@
 use scenic::prelude::*;
+use scenic::scanlines::ScanState;
 
 pub fn main() {
     let p1 = Polygon::new(
@@ -40,5 +41,10 @@ pub fn main() {
     scene.add_poly(p4);
 
     let mut d = DebugDraw::new();
-    d.add_scene(&scene);
+
+    let mut scan_state = ScanState::new(&scene);
+    scan_state.step();
+
+    d.add_scan_state(&scan_state);
+    d.save("scene.svg");
 }
