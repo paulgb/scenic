@@ -7,6 +7,7 @@ use svg::Node;
 use crate::line::Line;
 use crate::point::Point;
 use crate::polygon::Polygon;
+use crate::scene::Scene;
 
 const MARGIN: f64 = 0.1;
 const STROKE_WIDTH: usize = 2;
@@ -153,7 +154,7 @@ impl DebugDraw {
         DebugGroupBuilder::new(self, svg_line)
     }
 
-    pub fn add_poly<'a>(&'a mut self, poly: &Polygon) -> DebugGroupBuilder<'a, element::Path> {
+    fn polygon_to_path(&mut self, poly: &Polygon) -> element::Path {
         let mut data = Data::new();
 
         data = data.move_to(poly.points[0].coords());
@@ -164,14 +165,28 @@ impl DebugDraw {
         }
         data = data.close();
 
-        let path = element::Path::new()
+        element::Path::new()
             .set("d", data)
             .set("vector-effect", "non-scaling-stroke")
             .set("stroke-width", STROKE_WIDTH)
             .set("fill", POLY_FILL)
-            .set("stroke", STROKE);
+            .set("stroke", STROKE)
+    }
+
+    pub fn add_poly<'a>(&'a mut self, poly: &Polygon) -> DebugGroupBuilder<'a, element::Path> {
+        let path = self.polygon_to_path(poly);
 
         DebugGroupBuilder::new(self, path)
-        //self.doc = Some(self.doc.take().unwrap().add(path));
+    }
+
+    pub fn add_scene<'a>(&'a mut self, scene: &Scene) -> DebugGroupBuilder<'a, element::Group> {
+        let mut group = element::Group::new();
+
+        for poly in &scene.polys {
+            let path = self.polygon_to_path(&poly);
+            group = group.add(path);
+        }
+
+        DebugGroupBuilder::new(self, group)
     }
 }

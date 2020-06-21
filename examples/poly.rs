@@ -33,9 +33,12 @@ pub fn main() {
         4.,
     );
 
+    let mut scene = Scene::new();
+    scene.add_poly(p1);
+    scene.add_poly(p2);
+    scene.add_poly(p3);
+    scene.add_poly(p4);
+
     let mut d = DebugDraw::new();
-    d.add_poly(&p1).note("p1").stroke("red");
-    d.add_poly(&p2).note("p2").stroke("green");
-    d.add_poly(&p3).note("p3").stroke("blue");
-    d.add_poly(&p4).note("p4").stroke("purple");
+    d.add_scene(&scene);
 }
