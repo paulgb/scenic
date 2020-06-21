@@ -36,12 +36,12 @@ impl PartialEq for Line {
     }
 }
 
-impl Eq for Line {
-}
+impl Eq for Line {}
 
 impl Ord for Line {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(&other).expect("Invalid ordering of Lines.")
+        self.partial_cmp(&other)
+            .expect("Invalid ordering of Lines.")
     }
 }
 

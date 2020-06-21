@@ -12,14 +12,20 @@ pub struct Polygon {
 
 impl<'a> Polygon {
     pub fn new(points: Vec<Point>, z: f64) -> Polygon {
-        let mut poly = Polygon {points, z, lines: Vec::new()};
+        let mut poly = Polygon {
+            points,
+            z,
+            lines: Vec::new(),
+        };
 
-        let mut last_point = poly.points
+        let mut last_point = poly
+            .points
             .last()
             .expect("Tried to build lines from empty polygon.");
 
         for point in poly.points.iter() {
-            poly.lines.push(Line::new_with_poly(*last_point, *point, &poly));
+            poly.lines
+                .push(Line::new_with_poly(*last_point, *point, &poly));
             last_point = point;
         }
 
@@ -30,13 +36,17 @@ impl<'a> Polygon {
         let mut vertices: BTreeMap<Point, Vertex> = BTreeMap::new();
 
         for line in &self.lines {
-            vertices.entry(line.start)
+            vertices
+                .entry(line.start)
                 .or_insert_with(|| Vertex::new(line.start))
-                .start_lines.insert(line);
+                .start_lines
+                .insert(line);
 
-            vertices.entry(line.end)
+            vertices
+                .entry(line.end)
                 .or_insert_with(|| Vertex::new(line.end))
-                .end_lines.insert(line);
+                .end_lines
+                .insert(line);
         }
 
         //vertices.values().collect()

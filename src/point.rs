@@ -1,4 +1,4 @@
-use std::cmp::{PartialOrd, Ord};
+use std::cmp::{Ord, PartialOrd};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct Point {
@@ -26,7 +26,8 @@ impl Eq for Point {}
 
 impl std::cmp::Ord for Point {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).expect("Invalid values encountered in point comparison.")
+        self.partial_cmp(other)
+            .expect("Invalid values encountered in point comparison.")
     }
 }
 
