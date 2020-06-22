@@ -1,3 +1,4 @@
+pub mod data_structures;
 pub mod debug_draw;
 pub mod line;
 pub mod point;
