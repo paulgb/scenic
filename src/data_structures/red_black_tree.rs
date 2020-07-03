@@ -19,12 +19,12 @@ enum ChildType {
 }
 
 // Nullable holder for node.
-type NodeContainer<'tree, T> = Option<Box<RedBlackTreeNode<'tree, T>>>;
+type NodeContainer<'node, T> = Option<Box<RedBlackTreeNode<'node, T>>>;
 
 // Pointer to non-null node.
 
 type NodePointer<'pointer, T> = *mut RedBlackTreeNode<'pointer, T>;
-type NodeContainerRef<'pointer, T> = &'pointer mut NodeContainer<'pointer, T>;
+type NodeContainerRef<'pointer, 'node, T> = &'pointer mut NodeContainer<'node, T>;
 
 type NodeCache<'keys, T> = HashMap<*const T, NodePointer<'keys, T>>;
 
@@ -45,13 +45,13 @@ struct RedBlackTreeNode<'node, T> {
     pub right_child: NodeContainer<'node, T>,
 }
 
-struct NodeCursor<'cursor, T> {
-    node: &'cursor mut RedBlackTreeNode<'cursor, T>,
-    nodes: &'cursor mut HashMap<*const T, NodePointer<'cursor, T>>,
+struct NodeCursor<'cursor, 'tree, T> {
+    node: &'cursor mut RedBlackTreeNode<'tree, T>,
+    nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
 }
 
-impl<'tree, T> NodeCursor<'tree, T> {
-    pub fn left_child(self) -> TreeCursor<'tree, T> {
+impl<'cursor, 'tree, T> NodeCursor<'cursor, 'tree, T> {
+    pub fn left_child(self) -> TreeCursor<'cursor, 'tree, T> {
         if self.node.left_child.is_none() {
             TreeCursor::leaf_from_position(&mut self.node.left_child, self.nodes)
         } else {
@@ -61,12 +61,12 @@ impl<'tree, T> NodeCursor<'tree, T> {
     }
 }
 
-struct LeafCursor<'tree, T> {
-    position: NodeContainerRef<'tree, T>,
-    nodes: &'tree mut HashMap<*const T, NodePointer<'tree, T>>,
+struct LeafCursor<'cursor, 'tree, T> {
+    position: NodeContainerRef<'cursor, 'tree, T>,
+    nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
 }
 
-impl<'tree, T> LeafCursor<'tree, T> {
+impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
     pub fn insert(&mut self, key: &'tree T) {
         let node = RedBlackTreeNode {
             key,
@@ -100,13 +100,13 @@ impl<'tree, T> LeafCursor<'tree, T> {
     }
 }
 
-enum TreeCursor<'cursor, T: 'cursor> {
-    Node(NodeCursor<'cursor, T>),
-    Leaf(LeafCursor<'cursor, T>)
+enum TreeCursor<'cursor, 'tree, T: 'cursor> {
+    Node(NodeCursor<'cursor, 'tree, T>),
+    Leaf(LeafCursor<'cursor, 'tree, T>)
 }
 
-impl<'tree, T> TreeCursor<'tree, T> {
-    pub fn from_node(node: &'tree mut RedBlackTreeNode<'tree, T>, nodes: &'tree mut NodeCache<'tree, T>) -> TreeCursor<'tree, T> {
+impl<'cursor, 'tree, T> TreeCursor<'cursor, 'tree, T> {
+    pub fn from_node(node: &'cursor mut RedBlackTreeNode<'tree, T>, nodes: &'cursor mut NodeCache<'tree, T>) -> TreeCursor<'cursor, 'tree, T> {
         TreeCursor::Node(
             NodeCursor {
                 node,
@@ -115,7 +115,7 @@ impl<'tree, T> TreeCursor<'tree, T> {
         )
     }
 
-    pub fn leaf_from_position(position: NodeContainerRef<'tree, T>, nodes: &'tree mut NodeCache<'tree, T>) -> TreeCursor<'tree, T> {
+    pub fn leaf_from_position(position: NodeContainerRef<'cursor, 'tree, T>, nodes: &'cursor mut NodeCache<'tree, T>) -> TreeCursor<'cursor, 'tree, T> {
         TreeCursor::Leaf(
             LeafCursor {
                 position,
@@ -135,25 +135,25 @@ impl<'tree, T> TreeCursor<'tree, T> {
     }
 }
 
-struct RedBlackTree<'keys, T> {
-    nodes: HashMap<*const T, NodePointer<'keys, T>>,
-    root: NodeContainer<'keys, T>,
+struct RedBlackTree<'tree, T> {
+    nodes: HashMap<*const T, NodePointer<'tree, T>>,
+    root: NodeContainer<'tree, T>,
 }
 
-impl<'keys, T> RedBlackTree<'keys, T> {
-    pub fn new() -> RedBlackTree<'keys, T> {
+impl<'tree, T> RedBlackTree<'tree, T> {
+    pub fn new() -> RedBlackTree<'tree, T> {
         RedBlackTree {
             nodes: HashMap::new(),
             root: None,
         }
     }
 
-    pub fn get(&'keys mut self, key: *const T) -> Option<TreeCursor<'keys, T>> {
+    pub fn get<'cursor>(&'cursor mut self, key: *const T) -> Option<TreeCursor<'cursor, 'tree, T>> {
         let node = unsafe { &mut **self.nodes.get(&key)? };
         Some(TreeCursor::Node(NodeCursor {node, nodes: &mut self.nodes}))
     }
 
-    pub fn root<'c>(&'c mut self) -> TreeCursor<'c, T> {
+    pub fn root<'cursor>(&'cursor mut self) -> TreeCursor<'cursor, 'tree, T> {
         if self.root.is_none() {
             TreeCursor::leaf_from_position(&mut self.root, &mut self.nodes)
         } else {
@@ -170,27 +170,14 @@ mod tests {
     #[test]
     fn test_root_insert() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        {
-            let root = tree.root();
-        }
-
-        /*
+        let mut root = tree.root();
+        
         let leaf = match &mut root {
             TreeCursor::Leaf(leaf) => leaf,
             _ => panic!("Expected leaf.")
         };
-        */
         
-        //leaf.insert(&4);
-        //drop(leaf);
-
-        {
-            tree.root();
-        }
-
-        //drop(root);
-        //drop(tree);
-
-        //assert_eq!(&4, tree.root().value().unwrap());
+        leaf.insert(&4);
+        assert_eq!(&4, tree.root().value().unwrap());
     }
 }
