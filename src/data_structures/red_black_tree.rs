@@ -210,13 +210,8 @@ mod tests {
 
         let mut root = leaf.insert(&4);
         
-        match root.left_child() {
-            TreeCursor::Leaf(leaf) => {
-                let result = leaf.insert(&3);
-                assert_eq!(&3, result.node.key)
-            },
-            _ => panic!("Expected leaf.")
-        }
+        let result = root.left_child().expect_leaf().insert(&3);
+        assert_eq!(&3, result.node.key);
 
         root = tree.root().expect_node();
         let five = root.right_child().expect_leaf().insert(&5);
