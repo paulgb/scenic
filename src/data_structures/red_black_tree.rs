@@ -60,6 +60,15 @@ impl<'cursor, 'tree, T> NodeCursor<'cursor, 'tree, T> {
             TreeCursor::from_node(v, self.nodes)
         }
     }
+
+    pub fn right_child(self) -> TreeCursor<'cursor, 'tree, T> {
+        if self.node.right_child.is_none() {
+            TreeCursor::leaf_from_position(&mut self.node.right_child, self.nodes)
+        } else {
+            let v = &mut **self.node.right_child.as_mut().unwrap();
+            TreeCursor::from_node(v, self.nodes)
+        }
+    }
 }
 
 struct LeafCursor<'cursor, 'tree, T> {
@@ -68,7 +77,7 @@ struct LeafCursor<'cursor, 'tree, T> {
 }
 
 impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
-    pub fn insert(&mut self, key: &'tree T) {
+    pub fn insert(mut self, key: &'tree T) -> NodeCursor<'cursor, 'tree, T> {
         let node = RedBlackTreeNode {
             key,
             color: Color::Red,
@@ -81,6 +90,11 @@ impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
 
         *self.position = Some(bx);
         self.nodes.insert(key, bxp);
+
+        NodeCursor {
+            node: &mut *self.position.as_mut().unwrap(),
+            nodes: self.nodes,
+        }
     }
 }
 
@@ -90,6 +104,22 @@ enum TreeCursor<'cursor, 'tree, T: 'cursor> {
 }
 
 impl<'cursor, 'tree, T> TreeCursor<'cursor, 'tree, T> {
+    pub fn expect_node(self) -> NodeCursor<'cursor, 'tree, T> {
+        if let TreeCursor::Node(n) = self {
+            n
+        } else {
+            panic!("Expected node, got leaf.")
+        }
+    }
+
+    pub fn expect_leaf(self) -> LeafCursor<'cursor, 'tree, T> {
+        if let TreeCursor::Leaf(n) = self {
+            n
+        } else {
+            panic!("Expected leaf, got node.")
+        }
+    }
+
     pub fn from_node(
         node: &'cursor mut RedBlackTreeNode<'tree, T>,
         nodes: &'cursor mut NodeCache<'tree, T>,
@@ -153,12 +183,9 @@ mod tests {
     #[test]
     fn test_root_insert() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        let mut root = tree.root();
+        let root = tree.root();
 
-        let leaf = match &mut root {
-            TreeCursor::Leaf(leaf) => leaf,
-            _ => panic!("Expected leaf."),
-        };
+        let leaf = root.expect_leaf();
 
         leaf.insert(&4);
         assert_eq!(&4, tree.root().value().unwrap());
@@ -166,5 +193,26 @@ mod tests {
         let node = tree.get(&4);
 
         assert_eq!(&4, node.unwrap().node.key);
+    }
+
+    #[test]
+    fn test_insert_children() {
+        let mut tree: RedBlackTree<usize> = RedBlackTree::new();
+        let empty_root = tree.root();
+
+        let leaf = empty_root.expect_leaf();
+
+        let mut root = leaf.insert(&4);
+        
+        match root.left_child() {
+            TreeCursor::Leaf(leaf) => {
+                let result = leaf.insert(&3);
+                assert_eq!(&3, result.node.key)
+            },
+            _ => panic!("Expected leaf.")
+        }
+
+        root = tree.root().expect_node();
+        root.right_child().expect_leaf().insert(&5);
     }
 }
