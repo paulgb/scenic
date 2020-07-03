@@ -1,4 +1,10 @@
-use crate::data_structures::expanding_vec::ExpandingVector;
+use std::collections::HashMap;
+
+// TreePosition: either "root" or child relationship.
+// Data/Leaf cursor: pointer to tree node allowing insert/swap.
+// TreeNode: enum of either data/leaf node.
+
+// Tree owns nodes; hash table is a cache of pointers to nodes.
 
 #[derive(Clone, Copy)]
 enum Color {
@@ -6,108 +12,154 @@ enum Color {
     Black,
 }
 
+#[derive(Clone, Copy)]
+enum ChildType {
+    Left,
+    Right
+}
+
+// Nullable holder for node.
+type NodeContainer<'tree, T> = Option<Box<RedBlackTreeNode<'tree, T>>>;
+
+// Pointer to non-null node.
+
+type NodePointer<'pointer, T> = *mut RedBlackTreeNode<'pointer, T>;
+type NodeContainerRef<'pointer, T> = &'pointer mut NodeContainer<'pointer, T>;
+
+type NodeCache<'keys, T> = HashMap<*const T, NodePointer<'keys, T>>;
+
+/*
+#[derive(Clone, Copy)]
+enum TreePosition<'position, T> {
+    Child(NodePointer<'position, T>, ChildType),
+    Root()
+}
+*/
+
 #[derive(Clone)]
-pub struct RedBlackTreeNode<T> {
+struct RedBlackTreeNode<'node, T> {
+    key: &'node T,
     color: Color,
-    pub value: T,
+    //position: TreePosition<'node, T>,
+    pub left_child: NodeContainer<'node, T>,
+    pub right_child: NodeContainer<'node, T>,
 }
 
-pub struct RedBlackTree<T> {
-    values: ExpandingVector<RedBlackTreeNode<T>>,
+struct NodeCursor<'cursor, T> {
+    node: &'cursor mut RedBlackTreeNode<'cursor, T>,
+    nodes: &'cursor mut HashMap<*const T, NodePointer<'cursor, T>>,
 }
 
-trait HasParent<'a, T> {
-    fn parent(self) -> DataNodePointer<'a, T>;
-}
-
-pub struct LeafNodePointer<'a, T> {
-    index: usize,
-    tree: &'a mut RedBlackTree<T>,
-}
-
-impl<'a, T: Clone> HasParent<'a, T> for LeafNodePointer<'a, T> {
-    fn parent(self) -> DataNodePointer<'a, T> {
-        match self.tree.get_node(self.index >> 1) {
-            NodePointer::Node(n) => n,
-            _ => panic!("Expected parent of leaf node to be a data node."),
-        }
-    }
-}
-
-impl<'a, T: Clone> HasParent<'a, T> for DataNodePointer<'a, T> {
-    fn parent(self) -> DataNodePointer<'a, T> {
-        match self.tree.get_node(self.index >> 1) {
-            NodePointer::Node(n) => n,
-            _ => panic!("Expected parent of data node to be a data node."),
-        }
-    }
-}
-
-pub struct DataNodePointer<'a, T> {
-    index: usize,
-    tree: &'a mut RedBlackTree<T>,
-}
-
-impl<'a, T: Clone> DataNodePointer<'a, T> {
-    pub fn data<'b>(&'b self) -> &T {
-        &self.tree.get(self.index).unwrap()
-    }
-}
-
-impl<'a, T: Clone> LeafNodePointer<'a, T> {
-    pub fn insert(self, data: T) {
-        if self.index == 1 {
-            self.tree.values[1] = Some(RedBlackTreeNode {
-                color: Color::Red,
-                value: data,
-            })
+impl<'tree, T> NodeCursor<'tree, T> {
+    pub fn left_child(self) -> TreeCursor<'tree, T> {
+        if self.node.left_child.is_none() {
+            TreeCursor::leaf_from_position(&mut self.node.left_child, self.nodes)
         } else {
-            unimplemented!()
+            let v = &mut **self.node.left_child.as_mut().unwrap();
+            TreeCursor::from_node(v, self.nodes)
         }
     }
 }
 
-pub enum NodePointer<'a, T> {
-    Leaf(LeafNodePointer<'a, T>),
-    Node(DataNodePointer<'a, T>),
+struct LeafCursor<'tree, T> {
+    position: NodeContainerRef<'tree, T>,
+    nodes: &'tree mut HashMap<*const T, NodePointer<'tree, T>>,
 }
 
-impl<'a, T: Clone> DataNodePointer<'a, T> {
-    pub fn left_child(self) -> NodePointer<'a, T> {
-        let index = self.index << 1;
-        self.tree.get_node(index)
-    }
+impl<'tree, T> LeafCursor<'tree, T> {
+    pub fn insert(&mut self, key: &'tree T) {
+        let node = RedBlackTreeNode {
+            key,
+            color: Color::Red,
+            left_child: None,
+            right_child: None
+        };
 
-    pub fn right_child(self) -> NodePointer<'a, T> {
-        let index = (self.index << 1) + 1;
-        self.tree.get_node(index)
+        *self.position = Some(Box::new(node));
+
+        /*
+        self.nodes.insert(key, &mut node);
+        let k: *const T = key;
+        //let ptr: *const RedBlackTreeNode<T> = &self.tree.nodes[&k];
+        let ptr: *mut RedBlackTreeNode<T> = *self.nodes.get(&k).unwrap();
+        */
+
+        /*
+        match self.position {
+            TreePosition::Root => self.tree.root = Some(ptr),
+            TreePosition::Child(p, a) => {
+                let mut parent = unsafe {&mut *p};
+                
+                match a {
+                    ChildType::Left => parent.left_child = Some(ptr),
+                    ChildType::Right => parent.right_child = Some(ptr),
+                }
+            }
+        };
+        */
     }
 }
 
-impl<'a, T: Clone> RedBlackTree<T> {
-    pub fn new() -> RedBlackTree<T> {
+enum TreeCursor<'cursor, T: 'cursor> {
+    Node(NodeCursor<'cursor, T>),
+    Leaf(LeafCursor<'cursor, T>)
+}
+
+impl<'tree, T> TreeCursor<'tree, T> {
+    pub fn from_node(node: &'tree mut RedBlackTreeNode<'tree, T>, nodes: &'tree mut NodeCache<'tree, T>) -> TreeCursor<'tree, T> {
+        TreeCursor::Node(
+            NodeCursor {
+                node,
+                nodes
+            }
+        )
+    }
+
+    pub fn leaf_from_position(position: NodeContainerRef<'tree, T>, nodes: &'tree mut NodeCache<'tree, T>) -> TreeCursor<'tree, T> {
+        TreeCursor::Leaf(
+            LeafCursor {
+                position,
+                nodes
+            }
+        )
+    }
+
+    pub fn value(&self) -> Option<&T> {
+        match self {
+            TreeCursor::Node(node) => {
+                let n: &RedBlackTreeNode<'tree, T> = &*node.node;
+                Some(n.key)
+            },
+            _ => None
+        }
+    }
+}
+
+struct RedBlackTree<'keys, T> {
+    nodes: HashMap<*const T, NodePointer<'keys, T>>,
+    root: NodeContainer<'keys, T>,
+}
+
+impl<'keys, T> RedBlackTree<'keys, T> {
+    pub fn new() -> RedBlackTree<'keys, T> {
         RedBlackTree {
-            values: ExpandingVector::new(),
+            nodes: HashMap::new(),
+            root: None,
         }
     }
 
-    fn get_node<'b>(&'b mut self, index: usize) -> NodePointer<'b, T> {
-        if let Some(_) = self.get(index) {
-            NodePointer::Node(DataNodePointer { index, tree: self })
+    pub fn get(&'keys mut self, key: *const T) -> Option<TreeCursor<'keys, T>> {
+        let node = unsafe { &mut **self.nodes.get(&key)? };
+        Some(TreeCursor::Node(NodeCursor {node, nodes: &mut self.nodes}))
+    }
+
+    pub fn root<'c>(&'c mut self) -> TreeCursor<'c, T> {
+        if self.root.is_none() {
+            TreeCursor::leaf_from_position(&mut self.root, &mut self.nodes)
         } else {
-            NodePointer::Leaf(LeafNodePointer { index, tree: self })
+            let v = &mut **self.root.as_mut().unwrap();
+            TreeCursor::from_node(v, &mut self.nodes)
         }
-    }
-
-    fn get(&'a self, index: usize) -> Option<&'a T> {
-        match &self.values[index] {
-            Some(x) => Some(&x.value),
-            _ => None,
-        }
-    }
-
-    pub fn root<'b>(&'b mut self) -> NodePointer<'b, T> {
-        self.get_node(1)
     }
 }
 
@@ -116,21 +168,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_empty_insert() {
+    fn test_root_insert() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
+        {
+            let root = tree.root();
+        }
 
-        let ln = match tree.root() {
-            NodePointer::Leaf(ln) => ln,
-            NodePointer::Node(_) => panic!("Empty tree should have leaf root node."),
+        /*
+        let leaf = match &mut root {
+            TreeCursor::Leaf(leaf) => leaf,
+            _ => panic!("Expected leaf.")
         };
+        */
+        
+        //leaf.insert(&4);
+        //drop(leaf);
 
-        ln.insert(5);
+        {
+            tree.root();
+        }
 
-        let np = match tree.root() {
-            NodePointer::Node(np) => np,
-            NodePointer::Leaf(_) => panic!("Root should be replaced with leaf."),
-        };
+        //drop(root);
+        //drop(tree);
 
-        assert_eq!(&5, np.data());
+        //assert_eq!(&4, tree.root().value().unwrap());
     }
 }
