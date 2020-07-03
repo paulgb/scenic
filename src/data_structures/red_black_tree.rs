@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::ptr::NonNull;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Color {
     Red,
     Black,
@@ -14,25 +14,42 @@ enum ChildType {
     Right,
 }
 
+impl ChildType {
+    pub fn flip(self) -> ChildType {
+        match self {
+            ChildType::Left => ChildType::Right,
+            ChildType::Right => ChildType::Left
+        }
+    }
+}
+
+/// Type that optionally owns a RedBlackTreeNode in a static location on the heap.
 type NodeContainer<'node, T> = Option<Pin<Box<RedBlackTreeNode<'node, T>>>>;
 
+/// A non-null pointer to a RedBlackTreeNode.
 type NodePointer<'pointer, T> = NonNull<RedBlackTreeNode<'pointer, T>>;
+
+/// A mutably borrowed reference to a NodeContainer.
 type NodeContainerRef<'pointer, 'node, T> = &'pointer mut NodeContainer<'node, T>;
+
+/// A hash map from key to NodePointer, used to directly find the RedBlackTreeNode corresponding to the key.
 type NodeCache<'keys, T> = HashMap<*const T, NodePointer<'keys, T>>;
 
+/// A descriptor for a location of a node in the tree, either by reference to a parent or as the root.
 #[derive(Clone, Copy)]
 enum TreePosition<'position, T> {
     Child(NodePointer<'position, T>, ChildType),
     Root()
 }
 
+/// A node of the tree. Nodes own a reference to their key and own their (optional) children.
 #[derive(Clone)]
 struct RedBlackTreeNode<'node, T> {
     key: &'node T,
     color: Color,
     position: TreePosition<'node, T>,
-    pub left_child: NodeContainer<'node, T>,
-    pub right_child: NodeContainer<'node, T>,
+    left_child: NodeContainer<'node, T>,
+    right_child: NodeContainer<'node, T>,
 }
 
 struct NodeCursor<'cursor, 'tree, T> {
@@ -72,6 +89,10 @@ impl<'cursor, 'tree, T> NodeCursor<'cursor, 'tree, T> {
             })
         }
     }
+
+    pub fn value(&self) -> &T {
+        self.node.key
+    }
 }
 
 struct LeafCursor<'cursor, 'tree, T> {
@@ -82,9 +103,13 @@ struct LeafCursor<'cursor, 'tree, T> {
 
 impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
     pub fn insert(mut self, key: &'tree T) -> NodeCursor<'cursor, 'tree, T> {
+        let color = match self.position {
+            TreePosition::Child(_, _) => Color::Red,
+            TreePosition::Root() => Color::Black,
+        };
         let node = RedBlackTreeNode {
             key,
-            color: Color::Red,
+            color,
             position: self.position,
             left_child: None,
             right_child: None,
@@ -139,16 +164,6 @@ impl<'cursor, 'tree, T> TreeCursor<'cursor, 'tree, T> {
     ) -> TreeCursor<'cursor, 'tree, T> {
         TreeCursor::Leaf(LeafCursor { container, position, nodes })
     }
-
-    pub fn value(&self) -> Option<&T> {
-        match self {
-            TreeCursor::Node(node) => {
-                let n: &RedBlackTreeNode<'tree, T> = &*node.node;
-                Some(n.key)
-            }
-            _ => None,
-        }
-    }
 }
 
 struct RedBlackTree<'tree, T> {
@@ -189,24 +204,21 @@ mod tests {
     #[test]
     fn test_root_insert() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        let root = tree.root();
-
-        let leaf = root.expect_leaf();
+        let leaf = tree.root().expect_leaf();
 
         leaf.insert(&4);
-        assert_eq!(&4, tree.root().value().unwrap());
+        assert_eq!(&4, tree.root().expect_node().value());
 
-        let node = tree.get(&4);
+        let node = tree.get(&4).unwrap();
 
-        assert_eq!(&4, node.unwrap().node.key);
+        assert_eq!(&4, node.value());
+        assert_eq!(Color::Black, node.node.color);
     }
 
     #[test]
     fn test_insert_children() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        let empty_root = tree.root();
-
-        let leaf = empty_root.expect_leaf();
+        let leaf = tree.root().expect_leaf();
 
         let mut root = leaf.insert(&4);
         
@@ -216,6 +228,6 @@ mod tests {
         root = tree.root().expect_node();
         let five = root.right_child().expect_leaf().insert(&5);
 
-        assert_eq!(&4, five.parent().unwrap().node.key)
+        assert_eq!(&4, five.parent().unwrap().value())
     }
 }
