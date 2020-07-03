@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::pin::Pin;
+use std::ptr::NonNull;
+
 
 // TreePosition: either "root" or child relationship.
 // Data/Leaf cursor: pointer to tree node allowing insert/swap.
@@ -19,11 +22,12 @@ enum ChildType {
 }
 
 // Nullable holder for node.
-type NodeContainer<'node, T> = Option<Box<RedBlackTreeNode<'node, T>>>;
+type NodeContainer<'node, T> = Option<Pin<Box<RedBlackTreeNode<'node, T>>>>;
 
 // Pointer to non-null node.
 
-type NodePointer<'pointer, T> = *mut RedBlackTreeNode<'pointer, T>;
+//type NodePointer<'pointer, T> = *mut RedBlackTreeNode<'pointer, T>;
+type NodePointer<'pointer, T> = NonNull<RedBlackTreeNode<'pointer, T>>;
 type NodeContainerRef<'pointer, 'node, T> = &'pointer mut NodeContainer<'node, T>;
 
 type NodeCache<'keys, T> = HashMap<*const T, NodePointer<'keys, T>>;
@@ -75,7 +79,11 @@ impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
             right_child: None
         };
 
-        *self.position = Some(Box::new(node));
+        let mut bx = Box::pin(node);
+        let bxp = NonNull::from(&*bx.as_mut());
+
+        *self.position = Some(bx);
+        self.nodes.insert(key, bxp);
 
         /*
         self.nodes.insert(key, &mut node);
@@ -149,7 +157,7 @@ impl<'tree, T> RedBlackTree<'tree, T> {
     }
 
     pub fn get<'cursor>(&'cursor mut self, key: *const T) -> Option<TreeCursor<'cursor, 'tree, T>> {
-        let node = unsafe { &mut **self.nodes.get(&key)? };
+        let node = unsafe { &mut *self.nodes.get(&key)?.as_ptr() };
         Some(TreeCursor::Node(NodeCursor {node, nodes: &mut self.nodes}))
     }
 
@@ -179,5 +187,14 @@ mod tests {
         
         leaf.insert(&4);
         assert_eq!(&4, tree.root().value().unwrap());
+
+        let node = tree.get(&4);
+
+        match node {
+            Some(TreeCursor::Node(node)) => {
+                assert_eq!(&4, node.node.key)
+            },
+            _ => panic!("Should have had some.")
+        }
     }
 }
