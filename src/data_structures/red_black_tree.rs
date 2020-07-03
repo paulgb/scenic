@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::ptr::NonNull;
 
-
 // TreePosition: either "root" or child relationship.
 // Data/Leaf cursor: pointer to tree node allowing insert/swap.
 // TreeNode: enum of either data/leaf node.
@@ -18,15 +17,13 @@ enum Color {
 #[derive(Clone, Copy)]
 enum ChildType {
     Left,
-    Right
+    Right,
 }
 
 // Nullable holder for node.
 type NodeContainer<'node, T> = Option<Pin<Box<RedBlackTreeNode<'node, T>>>>;
 
 // Pointer to non-null node.
-
-//type NodePointer<'pointer, T> = *mut RedBlackTreeNode<'pointer, T>;
 type NodePointer<'pointer, T> = NonNull<RedBlackTreeNode<'pointer, T>>;
 type NodeContainerRef<'pointer, 'node, T> = &'pointer mut NodeContainer<'node, T>;
 
@@ -76,7 +73,7 @@ impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
             key,
             color: Color::Red,
             left_child: None,
-            right_child: None
+            right_child: None,
         };
 
         let mut bx = Box::pin(node);
@@ -84,52 +81,27 @@ impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
 
         *self.position = Some(bx);
         self.nodes.insert(key, bxp);
-
-        /*
-        self.nodes.insert(key, &mut node);
-        let k: *const T = key;
-        //let ptr: *const RedBlackTreeNode<T> = &self.tree.nodes[&k];
-        let ptr: *mut RedBlackTreeNode<T> = *self.nodes.get(&k).unwrap();
-        */
-
-        /*
-        match self.position {
-            TreePosition::Root => self.tree.root = Some(ptr),
-            TreePosition::Child(p, a) => {
-                let mut parent = unsafe {&mut *p};
-                
-                match a {
-                    ChildType::Left => parent.left_child = Some(ptr),
-                    ChildType::Right => parent.right_child = Some(ptr),
-                }
-            }
-        };
-        */
     }
 }
 
 enum TreeCursor<'cursor, 'tree, T: 'cursor> {
     Node(NodeCursor<'cursor, 'tree, T>),
-    Leaf(LeafCursor<'cursor, 'tree, T>)
+    Leaf(LeafCursor<'cursor, 'tree, T>),
 }
 
 impl<'cursor, 'tree, T> TreeCursor<'cursor, 'tree, T> {
-    pub fn from_node(node: &'cursor mut RedBlackTreeNode<'tree, T>, nodes: &'cursor mut NodeCache<'tree, T>) -> TreeCursor<'cursor, 'tree, T> {
-        TreeCursor::Node(
-            NodeCursor {
-                node,
-                nodes
-            }
-        )
+    pub fn from_node(
+        node: &'cursor mut RedBlackTreeNode<'tree, T>,
+        nodes: &'cursor mut NodeCache<'tree, T>,
+    ) -> TreeCursor<'cursor, 'tree, T> {
+        TreeCursor::Node(NodeCursor { node, nodes })
     }
 
-    pub fn leaf_from_position(position: NodeContainerRef<'cursor, 'tree, T>, nodes: &'cursor mut NodeCache<'tree, T>) -> TreeCursor<'cursor, 'tree, T> {
-        TreeCursor::Leaf(
-            LeafCursor {
-                position,
-                nodes
-            }
-        )
+    pub fn leaf_from_position(
+        position: NodeContainerRef<'cursor, 'tree, T>,
+        nodes: &'cursor mut NodeCache<'tree, T>,
+    ) -> TreeCursor<'cursor, 'tree, T> {
+        TreeCursor::Leaf(LeafCursor { position, nodes })
     }
 
     pub fn value(&self) -> Option<&T> {
@@ -137,8 +109,8 @@ impl<'cursor, 'tree, T> TreeCursor<'cursor, 'tree, T> {
             TreeCursor::Node(node) => {
                 let n: &RedBlackTreeNode<'tree, T> = &*node.node;
                 Some(n.key)
-            },
-            _ => None
+            }
+            _ => None,
         }
     }
 }
@@ -158,7 +130,10 @@ impl<'tree, T> RedBlackTree<'tree, T> {
 
     pub fn get<'cursor>(&'cursor mut self, key: *const T) -> Option<TreeCursor<'cursor, 'tree, T>> {
         let node = unsafe { &mut *self.nodes.get(&key)?.as_ptr() };
-        Some(TreeCursor::Node(NodeCursor {node, nodes: &mut self.nodes}))
+        Some(TreeCursor::Node(NodeCursor {
+            node,
+            nodes: &mut self.nodes,
+        }))
     }
 
     pub fn root<'cursor>(&'cursor mut self) -> TreeCursor<'cursor, 'tree, T> {
@@ -179,22 +154,20 @@ mod tests {
     fn test_root_insert() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
         let mut root = tree.root();
-        
+
         let leaf = match &mut root {
             TreeCursor::Leaf(leaf) => leaf,
-            _ => panic!("Expected leaf.")
+            _ => panic!("Expected leaf."),
         };
-        
+
         leaf.insert(&4);
         assert_eq!(&4, tree.root().value().unwrap());
 
         let node = tree.get(&4);
 
         match node {
-            Some(TreeCursor::Node(node)) => {
-                assert_eq!(&4, node.node.key)
-            },
-            _ => panic!("Should have had some.")
+            Some(TreeCursor::Node(node)) => assert_eq!(&4, node.node.key),
+            _ => panic!("Should have had some."),
         }
     }
 }
