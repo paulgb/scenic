@@ -128,12 +128,12 @@ impl<'tree, T> RedBlackTree<'tree, T> {
         }
     }
 
-    pub fn get<'cursor>(&'cursor mut self, key: *const T) -> Option<TreeCursor<'cursor, 'tree, T>> {
+    pub fn get<'cursor>(&'cursor mut self, key: *const T) -> Option<NodeCursor<'cursor, 'tree, T>> {
         let node = unsafe { &mut *self.nodes.get(&key)?.as_ptr() };
-        Some(TreeCursor::Node(NodeCursor {
+        Some(NodeCursor {
             node,
             nodes: &mut self.nodes,
-        }))
+        })
     }
 
     pub fn root<'cursor>(&'cursor mut self) -> TreeCursor<'cursor, 'tree, T> {
@@ -165,9 +165,6 @@ mod tests {
 
         let node = tree.get(&4);
 
-        match node {
-            Some(TreeCursor::Node(node)) => assert_eq!(&4, node.node.key),
-            _ => panic!("Should have had some."),
-        }
+        assert_eq!(&4, node.unwrap().node.key);
     }
 }
