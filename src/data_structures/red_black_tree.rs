@@ -2,14 +2,12 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::ptr::NonNull;
 
-#[allow(unused)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Color {
     Red,
     Black,
 }
 
-#[allow(unused)]
 #[derive(Clone, Copy)]
 enum ChildType {
     Left,
@@ -17,7 +15,6 @@ enum ChildType {
 }
 
 impl ChildType {
-    #[allow(unused)]
     pub fn flip(self) -> ChildType {
         match self {
             ChildType::Left => ChildType::Right,
@@ -33,22 +30,18 @@ type NodeContainer<'node, T> = Option<Pin<Box<RedBlackTreeNode<'node, T>>>>;
 type NodePointer<'pointer, T> = NonNull<RedBlackTreeNode<'pointer, T>>;
 
 /// A mutably borrowed reference to a NodeContainer.
-#[allow(unused)]
 type NodeContainerRef<'pointer, 'node, T> = &'pointer mut NodeContainer<'node, T>;
 
 /// A hash map from key to NodePointer, used to directly find the RedBlackTreeNode corresponding to the key.
-#[allow(unused)]
 type NodeCache<'keys, T> = HashMap<*const T, NodePointer<'keys, T>>;
 
 /// A descriptor for a location of a node in the tree, either by reference to a parent or as the root.
-#[allow(unused)]
 #[derive(Clone, Copy)]
 enum TreePosition<'position, T> {
     Child(NodePointer<'position, T>, ChildType),
     Root(NonNull<NodeContainer<'position, T>>),
 }
 
-#[allow(unused)]
 impl<'position, T> TreePosition<'position, T> {
     /// Note: this is unsafe because the resulting borrow aliases the pointer passed in.
     pub unsafe fn parent(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
@@ -99,7 +92,6 @@ impl<'node, T> RedBlackTreeNode<'node, T> {
         }
     }
 
-    #[allow(unused)]
     unsafe fn repair_tree(&mut self) {
         let parent = self.position.parent();
 
@@ -136,7 +128,6 @@ impl<'node, T> RedBlackTreeNode<'node, T> {
     }
 }
 
-#[allow(unused)]
 struct NodeCursor<'cursor, 'tree, T> {
     node: &'cursor mut RedBlackTreeNode<'tree, T>,
     nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
