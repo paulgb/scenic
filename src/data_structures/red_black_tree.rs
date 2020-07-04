@@ -39,7 +39,34 @@ type NodeCache<'keys, T> = HashMap<*const T, NodePointer<'keys, T>>;
 #[derive(Clone, Copy)]
 enum TreePosition<'position, T> {
     Child(NodePointer<'position, T>, ChildType),
-    Root()
+    Root(NonNull<NodeContainer<'position, T>>)
+}
+
+impl<'position, T> TreePosition<'position, T> {
+    /// Note: this is unsafe because the resulting borrow aliases the pointer passed in.
+    pub unsafe fn parent(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
+        match self {
+            TreePosition::Child(ptr, _) => Some(&mut *ptr.as_ptr()),
+            TreePosition::Root(_) => None
+        }
+    }
+
+    pub fn sibling(&self) -> TreePosition<'position, T> {
+        match self {
+            TreePosition::Child(ptr, ct) => TreePosition::Child(*ptr, ct.flip()),
+            _ => unimplemented!()
+        }
+    }
+
+    pub unsafe fn get(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
+        match self {
+            TreePosition::Child(ptr, ct) => (*ptr.as_ptr()).child(*ct),
+            TreePosition::Root(r) => {
+                let p = (*(*r).as_ptr()).as_deref_mut().unwrap();
+                Some(p)
+            }
+        }
+    }
 }
 
 /// A node of the tree. Nodes own a reference to their key and own their (optional) children.
@@ -52,12 +79,68 @@ struct RedBlackTreeNode<'node, T> {
     right_child: NodeContainer<'node, T>,
 }
 
+impl<'node, T> RedBlackTreeNode<'node, T> {
+    pub fn child(&mut self, child_type: ChildType) -> Option<&mut RedBlackTreeNode<'node, T>> {
+        let ch = match child_type {
+            ChildType::Left => &mut self.left_child,
+            ChildType::Right => &mut self.right_child
+        };
+
+        match ch {
+            Some(c) => Some(c.as_mut().get_mut()),
+            None => None
+        }
+    }
+
+
+    unsafe fn repair_tree(&mut self) {
+        let parent = self.position.parent();
+
+        if let Some(RedBlackTreeNode { color: Color::Black, .. }) = parent {
+            // Insert case 2: parent is black, do nothing.
+        } else if let Some(p) = parent {
+            if let Some(grandparent) = p.position.parent() {
+                let c = p.position.sibling();
+                let uncle = c.get();
+                let uncle_color = NodeCursor::node_color(&uncle);
+                
+                if uncle_color == Color::Red {
+                    // Insert case 3: parent and uncle are black.
+                    p.color = Color::Black;
+                    uncle.unwrap().color = Color::Black;
+                    grandparent.color = Color::Red;
+                    grandparent.repair_tree();
+                } else {
+                    // Insert case 4.
+                    unimplemented!()
+                }
+            } else {
+                // Insert case 4.
+                unimplemented!()
+            }
+        } else {
+            // Insert case 1: node is root; color black.
+            self.color = Color::Black;
+        }
+
+
+    }
+}
+
 struct NodeCursor<'cursor, 'tree, T> {
     node: &'cursor mut RedBlackTreeNode<'tree, T>,
     nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
 }
 
 impl<'cursor, 'tree, T> NodeCursor<'cursor, 'tree, T> {
+    fn node_color(node: &Option<&mut RedBlackTreeNode<T>>) -> Color {
+        match node {
+            Some(v) => v.color,
+            None => Color::Black
+        }
+    }
+
+
     pub fn left_child(self) -> TreeCursor<'cursor, 'tree, T> {
         if self.node.left_child.is_none() {
             let p: *mut _ = self.node;
@@ -82,7 +165,7 @@ impl<'cursor, 'tree, T> NodeCursor<'cursor, 'tree, T> {
 
     pub fn parent(self) -> Option<NodeCursor<'cursor, 'tree, T>> {
         match self.node.position {
-            TreePosition::Root() => None,
+            TreePosition::Root(_) => None,
             TreePosition::Child(parent, _) => Some(NodeCursor {
                 node: unsafe { &mut *parent.as_ptr() },
                 nodes: self.nodes
@@ -102,14 +185,16 @@ struct LeafCursor<'cursor, 'tree, T> {
 }
 
 impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
-    pub fn insert(mut self, key: &'tree T) -> NodeCursor<'cursor, 'tree, T> {
+    pub fn insert(self, key: &'tree T) -> NodeCursor<'cursor, 'tree, T> {
+        /*
         let color = match self.position {
             TreePosition::Child(_, _) => Color::Red,
-            TreePosition::Root() => Color::Black,
+            TreePosition::Root(_) => Color::Black,
         };
+        */
         let node = RedBlackTreeNode {
             key,
-            color,
+            color: Color::Red,
             position: self.position,
             left_child: None,
             right_child: None,
@@ -121,10 +206,14 @@ impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
         *self.container = Some(bx);
         self.nodes.insert(key, bxp);
 
-        NodeCursor {
+        let cur = NodeCursor {
             node: &mut *self.container.as_mut().unwrap(),
             nodes: self.nodes,
-        }
+        };
+
+        unsafe { cur.node.repair_tree() };
+
+        cur
     }
 }
 
@@ -189,7 +278,8 @@ impl<'tree, T> RedBlackTree<'tree, T> {
 
     pub fn root<'cursor>(&'cursor mut self) -> TreeCursor<'cursor, 'tree, T> {
         if self.root.is_none() {
-            TreeCursor::leaf_from_position(&mut self.root, TreePosition::Root(), &mut self.nodes)
+            let mm = NonNull::from(&mut self.root);
+            TreeCursor::leaf_from_position(&mut self.root, TreePosition::Root(mm), &mut self.nodes)
         } else {
             let v = &mut **self.root.as_mut().unwrap();
             TreeCursor::from_node(v, &mut self.nodes)
@@ -203,6 +293,7 @@ mod tests {
 
     #[test]
     fn test_root_insert() {
+        // Insert case 1 on wikipedia.
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
         let leaf = tree.root().expect_leaf();
 
@@ -217,6 +308,7 @@ mod tests {
 
     #[test]
     fn test_insert_children() {
+        // Insert case 2 on wikipedia.
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
         let leaf = tree.root().expect_leaf();
 
@@ -224,10 +316,33 @@ mod tests {
         
         let result = root.left_child().expect_leaf().insert(&3);
         assert_eq!(&3, result.node.key);
+        assert_eq!(Color::Red, result.node.color);
 
         root = tree.root().expect_node();
         let five = root.right_child().expect_leaf().insert(&5);
+        assert_eq!(Color::Red, five.node.color);
 
-        assert_eq!(&4, five.parent().unwrap().value())
+        assert_eq!(&4, five.parent().unwrap().value());
+    }
+
+    #[test]
+    fn test_insert_case_three() {
+        // Insert case 3 on wikipedia: insert under red parent with red uncle.
+        let mut tree: RedBlackTree<usize> = RedBlackTree::new();
+        let root = tree.root().expect_leaf().insert(&5);
+        root.right_child().expect_leaf().insert(&6);
+        let left = tree.root().expect_node().left_child().expect_leaf().insert(&4);
+        let mut node = left.left_child().expect_leaf().insert(&3);
+
+        assert_eq!(Color::Red, node.node.color);
+        // Parent
+        node = node.parent().unwrap();
+        assert_eq!(Color::Black, node.node.color);
+        // Grandparent
+        node = node.parent().unwrap();
+        assert_eq!(Color::Black, node.node.color);
+        // Uncle
+        node = node.right_child().expect_node();
+        assert_eq!(Color::Black, node.node.color);
     }
 }
