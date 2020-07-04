@@ -2,12 +2,14 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::ptr::NonNull;
 
+#[allow(unused)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Color {
     Red,
     Black,
 }
 
+#[allow(unused)]
 #[derive(Clone, Copy)]
 enum ChildType {
     Left,
@@ -15,10 +17,11 @@ enum ChildType {
 }
 
 impl ChildType {
+    #[allow(unused)]
     pub fn flip(self) -> ChildType {
         match self {
             ChildType::Left => ChildType::Right,
-            ChildType::Right => ChildType::Left
+            ChildType::Right => ChildType::Left,
         }
     }
 }
@@ -30,31 +33,35 @@ type NodeContainer<'node, T> = Option<Pin<Box<RedBlackTreeNode<'node, T>>>>;
 type NodePointer<'pointer, T> = NonNull<RedBlackTreeNode<'pointer, T>>;
 
 /// A mutably borrowed reference to a NodeContainer.
+#[allow(unused)]
 type NodeContainerRef<'pointer, 'node, T> = &'pointer mut NodeContainer<'node, T>;
 
 /// A hash map from key to NodePointer, used to directly find the RedBlackTreeNode corresponding to the key.
+#[allow(unused)]
 type NodeCache<'keys, T> = HashMap<*const T, NodePointer<'keys, T>>;
 
 /// A descriptor for a location of a node in the tree, either by reference to a parent or as the root.
+#[allow(unused)]
 #[derive(Clone, Copy)]
 enum TreePosition<'position, T> {
     Child(NodePointer<'position, T>, ChildType),
-    Root(NonNull<NodeContainer<'position, T>>)
+    Root(NonNull<NodeContainer<'position, T>>),
 }
 
+#[allow(unused)]
 impl<'position, T> TreePosition<'position, T> {
     /// Note: this is unsafe because the resulting borrow aliases the pointer passed in.
     pub unsafe fn parent(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
         match self {
             TreePosition::Child(ptr, _) => Some(&mut *ptr.as_ptr()),
-            TreePosition::Root(_) => None
+            TreePosition::Root(_) => None,
         }
     }
 
     pub fn sibling(&self) -> TreePosition<'position, T> {
         match self {
             TreePosition::Child(ptr, ct) => TreePosition::Child(*ptr, ct.flip()),
-            _ => unimplemented!()
+            _ => unimplemented!(),
         }
     }
 
@@ -83,27 +90,31 @@ impl<'node, T> RedBlackTreeNode<'node, T> {
     pub fn child(&mut self, child_type: ChildType) -> Option<&mut RedBlackTreeNode<'node, T>> {
         let ch = match child_type {
             ChildType::Left => &mut self.left_child,
-            ChildType::Right => &mut self.right_child
+            ChildType::Right => &mut self.right_child,
         };
 
         match ch {
             Some(c) => Some(c.as_mut().get_mut()),
-            None => None
+            None => None,
         }
     }
 
-
+    #[allow(unused)]
     unsafe fn repair_tree(&mut self) {
         let parent = self.position.parent();
 
-        if let Some(RedBlackTreeNode { color: Color::Black, .. }) = parent {
+        if let Some(RedBlackTreeNode {
+            color: Color::Black,
+            ..
+        }) = parent
+        {
             // Insert case 2: parent is black, do nothing.
         } else if let Some(p) = parent {
             if let Some(grandparent) = p.position.parent() {
                 let c = p.position.sibling();
                 let uncle = c.get();
                 let uncle_color = NodeCursor::node_color(&uncle);
-                
+
                 if uncle_color == Color::Red {
                     // Insert case 3: parent and uncle are black.
                     p.color = Color::Black;
@@ -122,24 +133,23 @@ impl<'node, T> RedBlackTreeNode<'node, T> {
             // Insert case 1: node is root; color black.
             self.color = Color::Black;
         }
-
-
     }
 }
 
+#[allow(unused)]
 struct NodeCursor<'cursor, 'tree, T> {
     node: &'cursor mut RedBlackTreeNode<'tree, T>,
     nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
 }
 
+#[allow(unused)]
 impl<'cursor, 'tree, T> NodeCursor<'cursor, 'tree, T> {
     fn node_color(node: &Option<&mut RedBlackTreeNode<T>>) -> Color {
         match node {
             Some(v) => v.color,
-            None => Color::Black
+            None => Color::Black,
         }
     }
-
 
     pub fn left_child(self) -> TreeCursor<'cursor, 'tree, T> {
         if self.node.left_child.is_none() {
@@ -168,8 +178,8 @@ impl<'cursor, 'tree, T> NodeCursor<'cursor, 'tree, T> {
             TreePosition::Root(_) => None,
             TreePosition::Child(parent, _) => Some(NodeCursor {
                 node: unsafe { &mut *parent.as_ptr() },
-                nodes: self.nodes
-            })
+                nodes: self.nodes,
+            }),
         }
     }
 
@@ -184,14 +194,9 @@ struct LeafCursor<'cursor, 'tree, T> {
     nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
 }
 
+#[allow(unused)]
 impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
     pub fn insert(self, key: &'tree T) -> NodeCursor<'cursor, 'tree, T> {
-        /*
-        let color = match self.position {
-            TreePosition::Child(_, _) => Color::Red,
-            TreePosition::Root(_) => Color::Black,
-        };
-        */
         let node = RedBlackTreeNode {
             key,
             color: Color::Red,
@@ -222,6 +227,7 @@ enum TreeCursor<'cursor, 'tree, T: 'cursor> {
     Leaf(LeafCursor<'cursor, 'tree, T>),
 }
 
+#[allow(unused)]
 impl<'cursor, 'tree, T> TreeCursor<'cursor, 'tree, T> {
     pub fn expect_node(self) -> NodeCursor<'cursor, 'tree, T> {
         if let TreeCursor::Node(n) = self {
@@ -251,7 +257,11 @@ impl<'cursor, 'tree, T> TreeCursor<'cursor, 'tree, T> {
         position: TreePosition<'tree, T>,
         nodes: &'cursor mut NodeCache<'tree, T>,
     ) -> TreeCursor<'cursor, 'tree, T> {
-        TreeCursor::Leaf(LeafCursor { container, position, nodes })
+        TreeCursor::Leaf(LeafCursor {
+            container,
+            position,
+            nodes,
+        })
     }
 }
 
@@ -260,6 +270,7 @@ struct RedBlackTree<'tree, T> {
     root: NodeContainer<'tree, T>,
 }
 
+#[allow(unused)]
 impl<'tree, T> RedBlackTree<'tree, T> {
     pub fn new() -> RedBlackTree<'tree, T> {
         RedBlackTree {
@@ -313,7 +324,7 @@ mod tests {
         let leaf = tree.root().expect_leaf();
 
         let mut root = leaf.insert(&4);
-        
+
         let result = root.left_child().expect_leaf().insert(&3);
         assert_eq!(&3, result.node.key);
         assert_eq!(Color::Red, result.node.color);
@@ -331,7 +342,12 @@ mod tests {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
         let root = tree.root().expect_leaf().insert(&5);
         root.right_child().expect_leaf().insert(&6);
-        let left = tree.root().expect_node().left_child().expect_leaf().insert(&4);
+        let left = tree
+            .root()
+            .expect_node()
+            .left_child()
+            .expect_leaf()
+            .insert(&4);
         let mut node = left.left_child().expect_leaf().insert(&3);
 
         assert_eq!(Color::Red, node.node.color);
