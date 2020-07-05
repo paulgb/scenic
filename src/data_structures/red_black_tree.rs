@@ -54,7 +54,7 @@ impl<'position, T> TreePosition<'position, T> {
     pub fn sibling(&self) -> TreePosition<'position, T> {
         match self {
             TreePosition::Child(ptr, ct) => TreePosition::Child(*ptr, ct.flip()),
-            _ => unimplemented!(),
+            _ => panic!("Root does not have a sibling."),
         }
     }
 
@@ -291,7 +291,9 @@ impl<'tree, T> RedBlackTree<'tree, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{*, Color::Black, Color::Red};
+
+
 
     #[test]
     fn test_root_insert() {
@@ -305,7 +307,7 @@ mod tests {
         let node = tree.get(&4).unwrap();
 
         assert_eq!(&4, node.value());
-        assert_eq!(Color::Black, node.node.color);
+        assert_eq!(Black, node.node.color);
     }
 
     #[test]
@@ -318,11 +320,11 @@ mod tests {
 
         let result = root.left_child().expect_leaf().insert(&3);
         assert_eq!(&3, result.node.key);
-        assert_eq!(Color::Red, result.node.color);
+        assert_eq!(Red, result.node.color);
 
         root = tree.root().expect_node();
         let five = root.right_child().expect_leaf().insert(&5);
-        assert_eq!(Color::Red, five.node.color);
+        assert_eq!(Red, five.node.color);
 
         assert_eq!(&4, five.parent().unwrap().value());
     }
@@ -341,15 +343,15 @@ mod tests {
             .insert(&4);
         let mut node = left.left_child().expect_leaf().insert(&3);
 
-        assert_eq!(Color::Red, node.node.color);
+        assert_eq!(Red, node.node.color);
         // Parent
         node = node.parent().unwrap();
-        assert_eq!(Color::Black, node.node.color);
+        assert_eq!(Black, node.node.color);
         // Grandparent
         node = node.parent().unwrap();
-        assert_eq!(Color::Black, node.node.color);
+        assert_eq!(Black, node.node.color);
         // Uncle
         node = node.right_child().expect_node();
-        assert_eq!(Color::Black, node.node.color);
+        assert_eq!(Black, node.node.color);
     }
 }
