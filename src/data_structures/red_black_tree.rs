@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::pin::Pin;
 use std::ptr::NonNull;
 
@@ -8,7 +9,7 @@ enum Color {
     Black,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum ChildType {
     Left,
     Right,
@@ -36,13 +37,13 @@ type NodeContainerRef<'pointer, 'node, T> = &'pointer mut NodeContainer<'node, T
 type NodeCache<'keys, T> = HashMap<*const T, NodePointer<'keys, T>>;
 
 /// A descriptor for a location of a node in the tree, either by reference to a parent or as the root.
-#[derive(Clone, Copy)]
-enum TreePosition<'position, T> {
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum TreePosition<'position, T: Debug> {
     Child(NodePointer<'position, T>, ChildType),
     Root(NonNull<NodeContainer<'position, T>>),
 }
 
-impl<'position, T> TreePosition<'position, T> {
+impl<'position, T: Debug> TreePosition<'position, T> {
     /// Note: this is unsafe because the resulting borrow aliases the pointer passed in.
     pub unsafe fn parent(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
         match self {
@@ -71,7 +72,7 @@ impl<'position, T> TreePosition<'position, T> {
 
 /// A node of the tree. Nodes own a reference to their key and own their (optional) children.
 #[derive(Clone)]
-struct RedBlackTreeNode<'node, T> {
+struct RedBlackTreeNode<'node, T: Debug> {
     key: &'node T,
     color: Color,
     position: TreePosition<'node, T>,
@@ -79,7 +80,7 @@ struct RedBlackTreeNode<'node, T> {
     right_child: NodeContainer<'node, T>,
 }
 
-impl<'node, T> RedBlackTreeNode<'node, T> {
+impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
     pub fn child(&mut self, child_type: ChildType) -> Option<&mut RedBlackTreeNode<'node, T>> {
         let ch = match child_type {
             ChildType::Left => &mut self.left_child,
@@ -128,13 +129,13 @@ impl<'node, T> RedBlackTreeNode<'node, T> {
     }
 }
 
-struct NodeCursor<'cursor, 'tree, T> {
+struct NodeCursor<'cursor, 'tree, T: Debug> {
     node: &'cursor mut RedBlackTreeNode<'tree, T>,
     nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
 }
 
 #[allow(unused)]
-impl<'cursor, 'tree, T> NodeCursor<'cursor, 'tree, T> {
+impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
     fn node_color(node: &Option<&mut RedBlackTreeNode<T>>) -> Color {
         match node {
             Some(v) => v.color,
@@ -179,14 +180,14 @@ impl<'cursor, 'tree, T> NodeCursor<'cursor, 'tree, T> {
     }
 }
 
-struct LeafCursor<'cursor, 'tree, T> {
+struct LeafCursor<'cursor, 'tree, T: Debug> {
     container: NodeContainerRef<'cursor, 'tree, T>,
     position: TreePosition<'tree, T>,
     nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
 }
 
 #[allow(unused)]
-impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
+impl<'cursor, 'tree, T: Debug> LeafCursor<'cursor, 'tree, T> {
     pub fn insert(self, key: &'tree T) -> NodeCursor<'cursor, 'tree, T> {
         let node = RedBlackTreeNode {
             key,
@@ -213,13 +214,13 @@ impl<'cursor, 'tree, T> LeafCursor<'cursor, 'tree, T> {
     }
 }
 
-enum TreeCursor<'cursor, 'tree, T: 'cursor> {
+enum TreeCursor<'cursor, 'tree, T: 'cursor + Debug> {
     Node(NodeCursor<'cursor, 'tree, T>),
     Leaf(LeafCursor<'cursor, 'tree, T>),
 }
 
 #[allow(unused)]
-impl<'cursor, 'tree, T> TreeCursor<'cursor, 'tree, T> {
+impl<'cursor, 'tree, T: Debug> TreeCursor<'cursor, 'tree, T> {
     pub fn expect_node(self) -> NodeCursor<'cursor, 'tree, T> {
         if let TreeCursor::Node(n) = self {
             n
@@ -256,13 +257,14 @@ impl<'cursor, 'tree, T> TreeCursor<'cursor, 'tree, T> {
     }
 }
 
-struct RedBlackTree<'tree, T> {
-    nodes: HashMap<*const T, NodePointer<'tree, T>>,
+struct RedBlackTree<'tree, T: Debug> {
+    //nodes: HashMap<*const T, NodePointer<'tree, T>>,
+    nodes: NodeCache<'tree, T>,
     root: NodeContainer<'tree, T>,
 }
 
 #[allow(unused)]
-impl<'tree, T> RedBlackTree<'tree, T> {
+impl<'tree, T: Debug> RedBlackTree<'tree, T> {
     pub fn new() -> RedBlackTree<'tree, T> {
         RedBlackTree {
             nodes: HashMap::new(),
@@ -291,9 +293,92 @@ impl<'tree, T> RedBlackTree<'tree, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{*, Color::Black, Color::Red};
+    use super::{Color::Black, Color::Red, *};
 
+    struct NodeExpectation {
+        key: usize,
+        left_child: Option<Box<NodeExpectation>>,
+        right_child: Option<Box<NodeExpectation>>,
+        color: Color,
+    }
 
+    fn nd(
+        key: usize,
+        color: Color,
+        left_child: Option<Box<NodeExpectation>>,
+        right_child: Option<Box<NodeExpectation>>,
+    ) -> Option<Box<NodeExpectation>> {
+        Some(Box::new(NodeExpectation {
+            key,
+            left_child,
+            right_child,
+            color,
+        }))
+    }
+
+    fn expect_node(
+        nodes: &mut NodeCache<usize>,
+        position: TreePosition<usize>,
+        actual: &NodeContainer<usize>,
+        expected: &Option<Box<NodeExpectation>>,
+    ) {
+        if let Some(expected_node) = expected {
+            let actual_ptr = actual.as_ref().expect(&format!(
+                "Expected {:?} node with key: {:?}",
+                expected_node.color, expected_node.key
+            ));
+            let actual_node = &**actual_ptr;
+
+            assert_eq!(expected_node.color, actual_node.color);
+            assert_eq!(expected_node.key, *actual_node.key);
+            println!("{:?} =? {:?}", actual_node.position, position);
+            assert!(actual_node.position == position);
+
+            // Ensure that the value in the tree matches this node.
+            {
+                let actual_node_ptr = nodes
+                    .remove(&(actual_node.key as *const usize))
+                    .unwrap()
+                    .as_ptr() as *const _;
+                let expected_node_ptr = &**actual_ptr as *const RedBlackTreeNode<_>;
+                assert_eq!(true, actual_node_ptr == expected_node_ptr);
+            }
+
+            // Recurse left child.
+            expect_node(
+                nodes,
+                TreePosition::Child(
+                    NonNull::new(actual_node as *const _ as *mut _).unwrap(),
+                    ChildType::Left,
+                ),
+                &actual_node.left_child,
+                &expected_node.left_child,
+            );
+            // Recurse right child.
+            expect_node(
+                nodes,
+                TreePosition::Child(
+                    NonNull::new(actual_node as *const _ as *mut _).unwrap(),
+                    ChildType::Right,
+                ),
+                &actual_node.right_child,
+                &expected_node.right_child,
+            );
+        } else {
+            assert!(actual.is_none());
+        }
+    }
+
+    fn expect_tree(actual: &RedBlackTree<usize>, expected: &Option<Box<NodeExpectation>>) {
+        let mut nodes = actual.nodes.clone();
+        expect_node(
+            &mut nodes,
+            TreePosition::Root(NonNull::new(&actual.root as *const _ as *mut _).unwrap()),
+            &actual.root,
+            expected,
+        );
+        assert_eq!(0, nodes.len());
+    }
 
     #[test]
     fn test_root_insert() {
@@ -302,12 +387,8 @@ mod tests {
         let leaf = tree.root().expect_leaf();
 
         leaf.insert(&4);
-        assert_eq!(&4, tree.root().expect_node().value());
 
-        let node = tree.get(&4).unwrap();
-
-        assert_eq!(&4, node.value());
-        assert_eq!(Black, node.node.color);
+        expect_tree(&tree, &nd(4, Black, None, None));
     }
 
     #[test]
@@ -315,9 +396,7 @@ mod tests {
         // Insert case 2 on wikipedia.
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
         let leaf = tree.root().expect_leaf();
-
         let mut root = leaf.insert(&4);
-
         let result = root.left_child().expect_leaf().insert(&3);
         assert_eq!(&3, result.node.key);
         assert_eq!(Red, result.node.color);
@@ -325,8 +404,12 @@ mod tests {
         root = tree.root().expect_node();
         let five = root.right_child().expect_leaf().insert(&5);
         assert_eq!(Red, five.node.color);
-
         assert_eq!(&4, five.parent().unwrap().value());
+
+        expect_tree(
+            &tree,
+            &nd(4, Black, nd(3, Red, None, None), nd(5, Red, None, None)),
+        );
     }
 
     #[test]
@@ -341,17 +424,16 @@ mod tests {
             .left_child()
             .expect_leaf()
             .insert(&4);
-        let mut node = left.left_child().expect_leaf().insert(&3);
+        left.left_child().expect_leaf().insert(&3);
 
-        assert_eq!(Red, node.node.color);
-        // Parent
-        node = node.parent().unwrap();
-        assert_eq!(Black, node.node.color);
-        // Grandparent
-        node = node.parent().unwrap();
-        assert_eq!(Black, node.node.color);
-        // Uncle
-        node = node.right_child().expect_node();
-        assert_eq!(Black, node.node.color);
+        expect_tree(
+            &tree,
+            &nd(
+                5,
+                Black,
+                nd(4, Black, nd(3, Red, None, None), None),
+                nd(6, Black, None, None),
+            ),
+        );
     }
 }
