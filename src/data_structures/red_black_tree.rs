@@ -68,6 +68,13 @@ impl<'position, T: Debug> TreePosition<'position, T> {
             }
         }
     }
+
+    pub unsafe fn get_container(&self) -> NodeContainerRef<T> {
+        match self {
+            TreePosition::Child(ptr, ct) => (*ptr.as_ptr()).child_container(*ct),
+            TreePosition::Root(r) => &mut *r.as_ptr()
+        }
+    }
 }
 
 /// A node of the tree. Nodes own a reference to their key and own their (optional) children.
@@ -82,15 +89,41 @@ struct RedBlackTreeNode<'node, T: Debug> {
 
 impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
     pub fn child(&mut self, child_type: ChildType) -> Option<&mut RedBlackTreeNode<'node, T>> {
-        let ch = match child_type {
-            ChildType::Left => &mut self.left_child,
-            ChildType::Right => &mut self.right_child,
-        };
+        let ch = self.child_container(child_type);
 
         match ch {
             Some(c) => Some(c.as_mut().get_mut()),
             None => None,
         }
+    }
+
+    pub fn child_container<'a>(&'a mut self, child_type: ChildType) -> NodeContainerRef<'a, 'node, T> {
+        let ch = match child_type {
+            ChildType::Left => &mut self.left_child,
+            ChildType::Right => &mut self.right_child,
+        };
+
+        ch
+    }
+
+    fn set_child(&mut self, child: Option<Pin<Box<RedBlackTreeNode<'node, T>>>>, child_type: ChildType) {
+        let ch = self.child_container(child_type);
+        assert!(ch.is_none());
+        if let Some(mut chh) = child {
+            let cc = NonNull::new(&mut *chh as *mut _).unwrap();
+            chh.position = TreePosition::Child(cc, child_type);
+
+            ch.replace(chh);            
+        }
+    }
+
+    unsafe fn rotate_right(&mut self) {
+        let container = self.position.get_container();
+        let old_root = &mut *container.take().unwrap();
+        let new_root = &mut *old_root.left_child.take().unwrap();
+        let pivot_child = new_root.right_child.take();
+
+        old_root.set_child(pivot_child, ChildType::Left);
     }
 
     unsafe fn repair_tree(&mut self) {
@@ -432,5 +465,10 @@ mod tests {
                 nd(6, Black, None, None),
             ),
         );
+    }
+
+    #[test]
+    fn test_insert_case_four() {
+
     }
 }
