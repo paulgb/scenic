@@ -104,8 +104,8 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
             // Insert case 2: parent is black, do nothing.
         } else if let Some(p) = parent {
             if let Some(grandparent) = p.position.parent() {
-                let c = p.position.sibling();
-                let uncle = c.get();
+                let sibling = p.position.sibling();
+                let uncle = sibling.get();
                 let uncle_color = NodeCursor::node_color(&uncle);
 
                 if uncle_color == Color::Red {
@@ -145,8 +145,7 @@ impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
 
     pub fn left_child(self) -> TreeCursor<'cursor, 'tree, T> {
         if self.node.left_child.is_none() {
-            let p: *mut _ = self.node;
-            let position = TreePosition::Child(NonNull::new(p).unwrap(), ChildType::Left);
+            let position = TreePosition::Child(NonNull::new(self.node as *mut _).unwrap(), ChildType::Left);
             TreeCursor::leaf_from_position(&mut self.node.left_child, position, self.nodes)
         } else {
             let v = &mut **self.node.left_child.as_mut().unwrap();
@@ -156,8 +155,7 @@ impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
 
     pub fn right_child(self) -> TreeCursor<'cursor, 'tree, T> {
         if self.node.right_child.is_none() {
-            let p: *mut _ = self.node;
-            let position = TreePosition::Child(NonNull::new(p).unwrap(), ChildType::Right);
+            let position = TreePosition::Child(NonNull::new(self.node as *mut _).unwrap(), ChildType::Right);
             TreeCursor::leaf_from_position(&mut self.node.right_child, position, self.nodes)
         } else {
             let v = &mut **self.node.right_child.as_mut().unwrap();
@@ -258,7 +256,6 @@ impl<'cursor, 'tree, T: Debug> TreeCursor<'cursor, 'tree, T> {
 }
 
 struct RedBlackTree<'tree, T: Debug> {
-    //nodes: HashMap<*const T, NodePointer<'tree, T>>,
     nodes: NodeCache<'tree, T>,
     root: NodeContainer<'tree, T>,
 }
