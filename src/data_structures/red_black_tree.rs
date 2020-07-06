@@ -33,6 +33,10 @@ struct NodeContainer<'node, T: Debug> {
 }
 
 impl<'node, T: Debug> NodeContainer<'node, T> {
+    pub fn take(&mut self) -> Option<Pin<Box<RedBlackTreeNode<'node, T>>>> {
+        self.value.take()
+    }
+
     pub fn get_mut(&mut self) -> Option<&mut RedBlackTreeNode<'node, T>> {
         match &mut self.value {
             Some(v) => {
@@ -62,6 +66,10 @@ impl<'node, T: Debug> NodeContainer<'node, T> {
         self.value.replace(Box::pin(value));
     }
 
+    pub fn set_pinned(&mut self, value: Pin<Box<RedBlackTreeNode<'node, T>>>) {
+        self.value.replace(value);
+    }
+
     pub fn get_ptr(&self) -> Option<NodePointer<'node, T>> {
         match &self.value {
             Some(p) => NonNull::new((&**p) as *const _ as *mut RedBlackTreeNode<T>),
@@ -81,18 +89,32 @@ type NodeContainerRef<'pointer, 'node, T> = &'pointer mut NodeContainer<'node, T
 type NodeCache<'keys, T> = HashMap<*const T, NodePointer<'keys, T>>;
 
 /// A descriptor for a location of a node in the tree, either by reference to a parent or as the root.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(PartialEq, Debug)]
 enum TreePosition<'position, T: Debug> {
     Child(NodePointer<'position, T>, ChildType),
     Root(NonNull<NodeContainer<'position, T>>),
 }
 
 impl<'position, T: Debug> TreePosition<'position, T> {
+    pub fn clone(&self) -> TreePosition<'position, T> {
+        match self {
+            TreePosition::Child(ptr, ct) => TreePosition::Child(*ptr, *ct),
+            TreePosition::Root(r) => TreePosition::Root(*r),
+        }
+    }
+
     /// Note: this is unsafe because the resulting borrow aliases the pointer passed in, which is not consumed.
     pub unsafe fn parent(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
         match self {
             TreePosition::Child(ptr, _) => Some(&mut *ptr.as_ptr()),
             TreePosition::Root(_) => None,
+        }
+    }
+
+    pub fn child_type(&self) -> ChildType {
+        match self {
+            TreePosition::Child(_, ct) => *ct,
+            _ => panic!("Root does not have a child type."),
         }
     }
 
@@ -142,30 +164,32 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         }
     }
 
-    /*
     fn set_child(
         &mut self,
         child: Option<Pin<Box<RedBlackTreeNode<'node, T>>>>,
         child_type: ChildType,
     ) {
+        let cc = NonNull::new(self as *mut _).unwrap();
         let ch = self.child_container(child_type);
         if let Some(mut chh) = child {
-            let cc = NonNull::new(&mut *chh as *mut _).unwrap();
             chh.position = TreePosition::Child(cc, child_type);
-
-            ch.set(chh);
+            ch.set_pinned(chh);
         }
     }
 
-    unsafe fn rotate_right(&mut self) {
-        let container = self.position.get_container();
-        let old_root = &mut *container.0.take().unwrap();
-        let new_root = &mut *old_root.left_child.0.take().unwrap();
-        let pivot_child = new_root.right_child.0.take();
+    fn rotate(&mut self, direction: ChildType) {
+        assert!(direction == ChildType::Right);
+        let container = unsafe { self.position.get_container() };
+        let mut old_root = container.take().unwrap();
+        let p = old_root.position.clone();
+        let mut new_root = (*old_root).left_child.take().unwrap();
+        let pivot_child = new_root.right_child.take();
 
         old_root.set_child(pivot_child, ChildType::Left);
+        new_root.set_child(Some(old_root), ChildType::Right);
+        new_root.position = p;
+        container.set_pinned(new_root);
     }
-    */
 
     fn node_color(node: &Option<&mut RedBlackTreeNode<T>>) -> Color {
         match node {
@@ -192,14 +216,22 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
             let uncle_color = RedBlackTreeNode::node_color(&uncle);
 
             if uncle_color == Color::Red {
-                // Insert case 3: parent and uncle are black.
+                // Insert case 3: parent and uncle are red; color both black and grandparent red.
                 p.color = Color::Black;
                 uncle.unwrap().color = Color::Black;
                 grandparent.color = Color::Red;
                 grandparent.repair_tree();
             } else {
                 // Insert case 4.
-                unimplemented!()
+                if self.position.child_type() == ChildType::Left
+                    && p.position.child_type() == ChildType::Left
+                {
+                    grandparent.rotate(ChildType::Right);
+                    p.color = Color::Black;
+                    grandparent.color = Color::Red;
+                } else {
+                    unimplemented!()
+                }
             }
         } else {
             // Insert case 1: node is root; color black.
@@ -395,7 +427,6 @@ mod tests {
 
             assert_eq!(expected_node.color, actual_node.color);
             assert_eq!(expected_node.key, *actual_node.key);
-            println!("{:?} =? {:?}", actual_node.position, position);
             assert!(actual_node.position == position);
 
             // Ensure that the value in the tree matches this node.
