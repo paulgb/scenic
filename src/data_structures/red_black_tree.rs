@@ -184,21 +184,19 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         {
             // Insert case 2: parent is black, do nothing.
         } else if let Some(p) = parent {
-            if let Some(grandparent) = unsafe { p.position.parent() } {
-                let sibling = p.position.sibling();
-                let uncle = unsafe { sibling.get() };
-                let uncle_color = RedBlackTreeNode::node_color(&uncle);
+            let grandparent = unsafe { p.position.parent() }.expect(
+                "Parent node is red, so it should not be the root, but it does not have a parent.",
+            );
+            let sibling = p.position.sibling();
+            let uncle = unsafe { sibling.get() };
+            let uncle_color = RedBlackTreeNode::node_color(&uncle);
 
-                if uncle_color == Color::Red {
-                    // Insert case 3: parent and uncle are black.
-                    p.color = Color::Black;
-                    uncle.unwrap().color = Color::Black;
-                    grandparent.color = Color::Red;
-                    grandparent.repair_tree();
-                } else {
-                    // Insert case 4.
-                    unimplemented!()
-                }
+            if uncle_color == Color::Red {
+                // Insert case 3: parent and uncle are black.
+                p.color = Color::Black;
+                uncle.unwrap().color = Color::Black;
+                grandparent.color = Color::Red;
+                grandparent.repair_tree();
             } else {
                 // Insert case 4.
                 unimplemented!()
@@ -220,7 +218,7 @@ impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
     pub fn child(self, child_type: ChildType) -> TreeCursor<'cursor, 'tree, T> {
         let position = TreePosition::Child(NonNull::new(self.node as *mut _).unwrap(), child_type);
         let container = self.node.child_container(child_type);
-        if container.empty() {            
+        if container.empty() {
             TreeCursor::leaf_from_position(container, position, self.nodes)
         } else {
             TreeCursor::from_node(container.get_mut().unwrap(), self.nodes)
@@ -275,7 +273,7 @@ impl<'cursor, 'tree, T: Debug> LeafCursor<'cursor, 'tree, T> {
             nodes: self.nodes,
         };
 
-        unsafe { cur.node.repair_tree() };
+        cur.node.repair_tree();
 
         cur
     }
@@ -504,5 +502,20 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_case_four() {}
+    fn test_insert_rotate() {
+        let mut tree: RedBlackTree<usize> = RedBlackTree::new();
+        let mut c = tree.root().expect_leaf().insert(&5);
+        c = c.left_child().expect_leaf().insert(&4);
+        c.left_child().expect_leaf().insert(&3);
+
+        expect_tree(
+            &tree,
+            &nd(
+                4,
+                Color::Black,
+                nd(3, Color::Red, None, None),
+                nd(5, Color::Red, None, None),
+            ),
+        );
+    }
 }
