@@ -29,7 +29,7 @@ type NodePointer<'pointer, T> = NonNull<RedBlackTreeNode<'pointer, T>>;
 
 /// Type that optionally owns a RedBlackTreeNode in a static location on the heap.
 struct NodeContainer<'node, T: Debug> {
-    value: Option<Pin<Box<RedBlackTreeNode<'node, T>>>>
+    value: Option<Pin<Box<RedBlackTreeNode<'node, T>>>>,
 }
 
 impl<'node, T: Debug> NodeContainer<'node, T> {
@@ -38,7 +38,7 @@ impl<'node, T: Debug> NodeContainer<'node, T> {
             Some(v) => {
                 let c = Pin::into_inner(v.as_mut());
                 Some(c)
-            },
+            }
             None => None,
         }
     }
@@ -49,22 +49,20 @@ impl<'node, T: Debug> NodeContainer<'node, T> {
             Some(v) => {
                 let c = Pin::into_inner(v.as_ref());
                 Some(c)
-            },
+            }
             None => None,
         }
     }
 
     pub fn new() -> Self {
-        NodeContainer {
-            value: None
-        }
+        NodeContainer { value: None }
     }
 
     pub fn set(&mut self, value: RedBlackTreeNode<'node, T>) {
         self.value.replace(Box::pin(value));
     }
 
-    pub fn as_ptr(&self) -> Option<NodePointer<'node, T>> {
+    pub fn get_ptr(&self) -> Option<NodePointer<'node, T>> {
         match &self.value {
             Some(p) => NonNull::new((&**p) as *const _ as *mut RedBlackTreeNode<T>),
             None => None,
@@ -90,7 +88,7 @@ enum TreePosition<'position, T: Debug> {
 }
 
 impl<'position, T: Debug> TreePosition<'position, T> {
-    /// Note: this is unsafe because the resulting borrow aliases the pointer passed in.
+    /// Note: this is unsafe because the resulting borrow aliases the pointer passed in, which is not consumed.
     pub unsafe fn parent(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
         match self {
             TreePosition::Child(ptr, _) => Some(&mut *ptr.as_ptr()),
@@ -108,7 +106,7 @@ impl<'position, T: Debug> TreePosition<'position, T> {
     pub unsafe fn get(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
         match self {
             TreePosition::Child(ptr, ct) => (*ptr.as_ptr()).child(*ct),
-            TreePosition::Root(r) => (*r.as_ptr()).get_mut()
+            TreePosition::Root(r) => (*r.as_ptr()).get_mut(),
         }
     }
 
@@ -131,20 +129,17 @@ struct RedBlackTreeNode<'node, T: Debug> {
 
 impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
     pub fn child(&mut self, child_type: ChildType) -> Option<&mut RedBlackTreeNode<'node, T>> {
-        let ch = self.child_container(child_type);
-        ch.get_mut()
+        self.child_container(child_type).get_mut()
     }
 
     pub fn child_container<'a>(
         &'a mut self,
         child_type: ChildType,
     ) -> NodeContainerRef<'a, 'node, T> {
-        let ch = match child_type {
+        match child_type {
             ChildType::Left => &mut self.left_child,
             ChildType::Right => &mut self.right_child,
-        };
-
-        ch
+        }
     }
 
     /*
@@ -172,8 +167,15 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
     }
     */
 
-    unsafe fn repair_tree(&mut self) {
-        let parent = self.position.parent();
+    fn node_color(node: &Option<&mut RedBlackTreeNode<T>>) -> Color {
+        match node {
+            Some(v) => v.color,
+            None => Color::Black,
+        }
+    }
+
+    fn repair_tree(&mut self) {
+        let parent = unsafe { self.position.parent() };
 
         if let Some(RedBlackTreeNode {
             color: Color::Black,
@@ -182,10 +184,10 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         {
             // Insert case 2: parent is black, do nothing.
         } else if let Some(p) = parent {
-            if let Some(grandparent) = p.position.parent() {
+            if let Some(grandparent) = unsafe { p.position.parent() } {
                 let sibling = p.position.sibling();
-                let uncle = sibling.get();
-                let uncle_color = NodeCursor::node_color(&uncle);
+                let uncle = unsafe { sibling.get() };
+                let uncle_color = RedBlackTreeNode::node_color(&uncle);
 
                 if uncle_color == Color::Red {
                     // Insert case 3: parent and uncle are black.
@@ -215,33 +217,22 @@ struct NodeCursor<'cursor, 'tree, T: Debug> {
 
 #[allow(unused)]
 impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
-    fn node_color(node: &Option<&mut RedBlackTreeNode<T>>) -> Color {
-        match node {
-            Some(v) => v.color,
-            None => Color::Black,
+    pub fn child(self, child_type: ChildType) -> TreeCursor<'cursor, 'tree, T> {
+        let position = TreePosition::Child(NonNull::new(self.node as *mut _).unwrap(), child_type);
+        let container = self.node.child_container(child_type);
+        if container.empty() {            
+            TreeCursor::leaf_from_position(container, position, self.nodes)
+        } else {
+            TreeCursor::from_node(container.get_mut().unwrap(), self.nodes)
         }
     }
 
     pub fn left_child(self) -> TreeCursor<'cursor, 'tree, T> {
-        if self.node.left_child.empty() {
-            let position =
-                TreePosition::Child(NonNull::new(self.node as *mut _).unwrap(), ChildType::Left);
-            TreeCursor::leaf_from_position(&mut self.node.left_child, position, self.nodes)
-        } else {
-            let v = self.node.left_child.get_mut().unwrap();
-            TreeCursor::from_node(v, self.nodes)
-        }
+        self.child(ChildType::Left)
     }
 
     pub fn right_child(self) -> TreeCursor<'cursor, 'tree, T> {
-        if self.node.right_child.empty() {
-            let position =
-                TreePosition::Child(NonNull::new(self.node as *mut _).unwrap(), ChildType::Right);
-            TreeCursor::leaf_from_position(&mut self.node.right_child, position, self.nodes)
-        } else {
-            let v = self.node.right_child.get_mut().unwrap();
-            TreeCursor::from_node(v, self.nodes)
-        }
+        self.child(ChildType::Right)
     }
 
     pub fn parent(self) -> Option<NodeCursor<'cursor, 'tree, T>> {
@@ -277,7 +268,7 @@ impl<'cursor, 'tree, T: Debug> LeafCursor<'cursor, 'tree, T> {
         };
 
         self.container.set(node);
-        self.nodes.insert(key, self.container.as_ptr().unwrap());
+        self.nodes.insert(key, self.container.get_ptr().unwrap());
 
         let cur = NodeCursor {
             node: self.container.get_mut().unwrap(),
