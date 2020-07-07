@@ -210,45 +210,52 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
     }
 
     fn repair_tree(&mut self) {
-        let parent = unsafe { self.position.parent() };
+        let parent_container = unsafe { self.position.parent() };
 
         if let Some(RedBlackTreeNode {
             color: Color::Black,
             ..
-        }) = parent
+        }) = parent_container
         {
             // Insert case 2: parent is black, do nothing.
-        } else if let Some(p) = parent {
-            let grandparent = unsafe { p.position.parent() }.expect(
+        } else if let Some(mut parent) = parent_container {
+            let grandparent = unsafe { parent.position.parent() }.expect(
                 "Parent node is red, so it should not be the root, but it does not have a parent.",
             );
-            let sibling = p.position.sibling();
+            let sibling = parent.position.sibling();
             let uncle = unsafe { sibling.get() };
             let uncle_color = RedBlackTreeNode::node_color(&uncle);
 
             if uncle_color == Color::Red {
                 // Insert case 3: parent and uncle are red; color both black and grandparent red.
-                p.color = Color::Black;
+                parent.color = Color::Black;
                 uncle.unwrap().color = Color::Black;
                 grandparent.color = Color::Red;
                 grandparent.repair_tree();
             } else {
                 // Insert case 4.
-                if self.position.child_type() == ChildType::Left
-                    && p.position.child_type() == ChildType::Left
-                {
-                    grandparent.rotate(ChildType::Right);
-                    p.color = Color::Black;
-                    grandparent.color = Color::Red;
-                } else if self.position.child_type() == ChildType::Right
-                    && p.position.child_type() == ChildType::Right
-                {
-                    grandparent.rotate(ChildType::Left);
-                    p.color = Color::Black;
-                    grandparent.color = Color::Red;
-                } else {
-                    unimplemented!()
-                }
+                let rotate_direction =
+                    match (self.position.child_type(), parent.position.child_type()) {
+                        (ChildType::Left, ChildType::Left) => ChildType::Right,
+                        (ChildType::Right, ChildType::Right) => ChildType::Left,
+                        (ChildType::Right, ChildType::Left) => {
+                            parent.rotate(ChildType::Left);
+                            parent = self;
+                            ChildType::Right
+                        },
+                        (ChildType::Left, ChildType::Right) => {
+                            parent.rotate(ChildType::Right);
+                            parent = self;
+                            ChildType::Left
+                        }
+                    };
+
+                let grandparent = unsafe { parent.position.parent() }.expect(
+                    "Parent node is red, so it should not be the root, but it does not have a parent.",
+                );
+                grandparent.rotate(rotate_direction);
+                parent.color = Color::Black;
+                grandparent.color = Color::Red;
             }
         } else {
             // Insert case 1: node is root; color black.
@@ -589,6 +596,46 @@ mod tests {
         let mut c = tree.root().expect_leaf().insert(&5);
         c = c.right_child().expect_leaf().insert(&6);
         c.right_child().expect_leaf().insert(&7);
+
+        println!("{:?}", tree);
+
+        expect_tree(
+            &tree,
+            &nd(
+                6,
+                Color::Black,
+                nd(5, Color::Red, None, None),
+                nd(7, Color::Red, None, None),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_two_rotation_insert() {
+        let mut tree: RedBlackTree<usize> = RedBlackTree::new();
+        let mut c = tree.root().expect_leaf().insert(&5);
+        c = c.left_child().expect_leaf().insert(&3);
+        c.right_child().expect_leaf().insert(&4);
+
+        println!("{:?}", tree);
+
+        expect_tree(
+            &tree,
+            &nd(
+                4,
+                Color::Black,
+                nd(3, Color::Red, None, None),
+                nd(5, Color::Red, None, None),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_two_rotation_insert_reverse() {
+        let mut tree: RedBlackTree<usize> = RedBlackTree::new();
+        let mut c = tree.root().expect_leaf().insert(&5);
+        c = c.right_child().expect_leaf().insert(&7);
+        c.left_child().expect_leaf().insert(&6);
 
         println!("{:?}", tree);
 
