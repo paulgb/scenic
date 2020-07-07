@@ -16,7 +16,8 @@ enum ChildType {
 }
 
 impl ChildType {
-    pub fn flip(self) -> ChildType {
+    /// Return the opposite ChildType.
+    fn flip(self) -> ChildType {
         match self {
             ChildType::Left => ChildType::Right,
             ChildType::Right => ChildType::Left,
@@ -27,7 +28,7 @@ impl ChildType {
 /// A non-null pointer to a RedBlackTreeNode.
 type NodePointer<'pointer, T> = NonNull<RedBlackTreeNode<'pointer, T>>;
 
-/// Type that optionally owns a RedBlackTreeNode in a static location on the heap.
+/// Container that optionally owns a RedBlackTreeNode in a static location on the heap.
 struct NodeContainer<'node, T: Debug> {
     value: Option<Pin<Box<RedBlackTreeNode<'node, T>>>>,
 }
@@ -42,11 +43,13 @@ impl<'node, T: Debug> Debug for NodeContainer<'node, T> {
 }
 
 impl<'node, T: Debug> NodeContainer<'node, T> {
-    pub fn take(&mut self) -> Option<Pin<Box<RedBlackTreeNode<'node, T>>>> {
+    /// Empties this container and returns its (optional) value.
+    fn take(&mut self) -> Option<Pin<Box<RedBlackTreeNode<'node, T>>>> {
         self.value.take()
     }
 
-    pub fn get_mut(&mut self) -> Option<&mut RedBlackTreeNode<'node, T>> {
+    /// Returns an optional mutable reference to the RedBlackTree in this container.
+    fn get_mut(&mut self) -> Option<&mut RedBlackTreeNode<'node, T>> {
         match &mut self.value {
             Some(v) => {
                 let c = Pin::into_inner(v.as_mut());
@@ -56,7 +59,7 @@ impl<'node, T: Debug> NodeContainer<'node, T> {
         }
     }
 
-    #[allow(unused)]
+    /// Returns an optional reference to the RedBlackTree in this container.
     pub fn get(&self) -> Option<&RedBlackTreeNode<'node, T>> {
         match &self.value {
             Some(v) => {
@@ -67,26 +70,31 @@ impl<'node, T: Debug> NodeContainer<'node, T> {
         }
     }
 
-    pub fn new() -> Self {
+    /// Create a new empty container.
+    fn new() -> Self {
         NodeContainer { value: None }
     }
 
-    pub fn set(&mut self, value: RedBlackTreeNode<'node, T>) {
+    /// Sets the value of this container to the given RedBlackTree.
+    fn set(&mut self, value: RedBlackTreeNode<'node, T>) {
         self.value.replace(Box::pin(value));
     }
 
-    pub fn set_pinned(&mut self, value: Pin<Box<RedBlackTreeNode<'node, T>>>) {
+    /// Sets the value of this container to the given already-pinned RedBlackTree.
+    fn set_pinned(&mut self, value: Pin<Box<RedBlackTreeNode<'node, T>>>) {
         self.value.replace(value);
     }
 
-    pub fn get_ptr(&self) -> Option<NodePointer<'node, T>> {
+    /// Returns an optional NonNull pointer to the content of this container.
+    fn get_ptr(&self) -> Option<NodePointer<'node, T>> {
         match &self.value {
             Some(p) => NonNull::new((&**p) as *const _ as *mut RedBlackTreeNode<T>),
             None => None,
         }
     }
 
-    pub fn empty(&self) -> bool {
+    /// Returns true if this container is empty.
+    fn empty(&self) -> bool {
         self.value.is_none()
     }
 }
@@ -100,48 +108,58 @@ type NodeCache<'keys, T> = HashMap<*const T, NodePointer<'keys, T>>;
 /// A descriptor for a location of a node in the tree, either by reference to a parent or as the root.
 #[derive(PartialEq, Debug)]
 enum TreePosition<'position, T: Debug> {
-    Child(NodePointer<'position, T>, ChildType),
+    /// Position of the root node with reference to its NodeContainer.
     Root(NonNull<NodeContainer<'position, T>>),
+    /// Position of a non-root node by reference to its parent.
+    Child(NodePointer<'position, T>, ChildType),
 }
 
-impl<'position, T: Debug> TreePosition<'position, T> {
-    pub fn clone(&self) -> TreePosition<'position, T> {
+impl<'position, T: Debug> Clone for TreePosition<'position, T> {
+    fn clone(&self) -> Self {
         match self {
             TreePosition::Child(ptr, ct) => TreePosition::Child(*ptr, *ct),
             TreePosition::Root(r) => TreePosition::Root(*r),
         }
     }
+}
 
-    /// Note: this is unsafe because the resulting borrow aliases the pointer passed in, which is not consumed.
-    pub unsafe fn parent(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
+impl<'position, T: Debug> TreePosition<'position, T> {
+    /// Returns the parent to this node, if it exists.
+    /// This is unsafe because the resulting borrow aliases the pointer passed in, which is not consumed.
+    unsafe fn parent(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
         match self {
             TreePosition::Child(ptr, _) => Some(&mut *ptr.as_ptr()),
             TreePosition::Root(_) => None,
         }
     }
 
-    pub fn child_type(&self) -> ChildType {
+    /// Returns the ChildType of this node. Panics if this is a root node.
+    fn child_type(&self) -> ChildType {
         match self {
             TreePosition::Child(_, ct) => *ct,
             _ => panic!("Root does not have a child type."),
         }
     }
 
-    pub fn sibling(&self) -> TreePosition<'position, T> {
+    /// Returns the position of this node's sibling, which may be a leaf node. Panics if this is a root node.
+    fn sibling(&self) -> TreePosition<'position, T> {
         match self {
             TreePosition::Child(ptr, ct) => TreePosition::Child(*ptr, ct.flip()),
             _ => panic!("Root does not have a sibling."),
         }
     }
 
-    pub unsafe fn get(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
+    /// Returns the node in this position. Unsafe because the TreePosition does not own its node, but useful for
+    /// getting nodes based on position.
+    unsafe fn get(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
         match self {
             TreePosition::Child(ptr, ct) => (*ptr.as_ptr()).child(*ct),
             TreePosition::Root(r) => (*r.as_ptr()).get_mut(),
         }
     }
 
-    pub unsafe fn get_container(&self) -> NodeContainerRef<T> {
+    /// Returns a pointer to the container for the node referred to.
+    unsafe fn get_container(&self) -> NodeContainerRef<T> {
         match self {
             TreePosition::Child(ptr, ct) => (*ptr.as_ptr()).child_container(*ct),
             TreePosition::Root(r) => &mut *r.as_ptr(),
@@ -159,11 +177,13 @@ struct RedBlackTreeNode<'node, T: Debug> {
 }
 
 impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
-    pub fn child(&mut self, child_type: ChildType) -> Option<&mut RedBlackTreeNode<'node, T>> {
+    /// Returns an optional mutable reference to the child of the type provided.
+    fn child(&mut self, child_type: ChildType) -> Option<&mut RedBlackTreeNode<'node, T>> {
         self.child_container(child_type).get_mut()
     }
 
-    pub fn child_container<'a>(
+    /// Returns a mutable reference to the container of the requested child node.
+    fn child_container<'a>(
         &'a mut self,
         child_type: ChildType,
     ) -> NodeContainerRef<'a, 'node, T> {
@@ -173,6 +193,9 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         }
     }
 
+    /// Sets the given child of this node to the given value. Assumes that this child
+    /// is currently empty, but this is not checked because it is only used as a helper
+    /// for `rotate`, which calls `take` in each case before `set_child`.
     fn set_child(
         &mut self,
         child: Option<Pin<Box<RedBlackTreeNode<'node, T>>>>,
@@ -186,6 +209,9 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         }
     }
 
+    /// Rotate this node in the given direction. If the direction is Right, the left child
+    /// of this node becomes its parent. If the direction is Left, the right child of this
+    /// node becomes its parent.
     fn rotate(&mut self, direction: ChildType) {
         let container = unsafe { self.position.get_container() };
         let mut old_root = container.take().unwrap();
@@ -202,6 +228,8 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         container.set_pinned(new_root);
     }
 
+    /// Returns the color of an optional node. The `None` value here represents a leaf node,
+    /// which is black by definition in a red-black tree.
     fn node_color(node: &Option<&mut RedBlackTreeNode<T>>) -> Color {
         match node {
             Some(v) => v.color,
@@ -209,6 +237,7 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         }
     }
 
+    /// Repair the tree after a given newly inserted node.
     fn repair_tree(&mut self) {
         let parent_container = unsafe { self.position.parent() };
 
@@ -274,20 +303,24 @@ impl<'a, T: Debug> Debug for RedBlackTreeNode<'a, T> {
     }
 }
 
-struct NodeCursor<'cursor, 'tree, T: Debug> {
+/// Cursor for accessing and manipulating a node of the tree. Contains a
+/// mutable reference to a tree's `NodeCache`, because it needs to be
+/// updated for inserts and deletes. This means that only one NodeCursor
+/// may exist at once, even though the `node` references might not conflict.
+pub struct NodeCursor<'cursor, 'tree, T: Debug> {
     node: &'cursor mut RedBlackTreeNode<'tree, T>,
-    nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
+    node_cache: &'cursor mut NodeCache<'tree, T>,
 }
 
-#[allow(unused)]
 impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
-    pub fn child(self, child_type: ChildType) -> TreeCursor<'cursor, 'tree, T> {
+    /// Return a cursor to the given child.
+    fn child(self, child_type: ChildType) -> TreeCursor<'cursor, 'tree, T> {
         let position = TreePosition::Child(NonNull::new(self.node as *mut _).unwrap(), child_type);
         let container = self.node.child_container(child_type);
         if container.empty() {
-            TreeCursor::leaf_from_position(container, position, self.nodes)
+            TreeCursor::leaf_from_position(container, position, self.node_cache)
         } else {
-            TreeCursor::from_node(container.get_mut().unwrap(), self.nodes)
+            TreeCursor::from_node(container.get_mut().unwrap(), self.node_cache)
         }
     }
 
@@ -304,7 +337,7 @@ impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
             TreePosition::Root(_) => None,
             TreePosition::Child(parent, _) => Some(NodeCursor {
                 node: unsafe { &mut *parent.as_ptr() },
-                nodes: self.nodes,
+                node_cache: self.node_cache,
             }),
         }
     }
@@ -314,7 +347,7 @@ impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
     }
 }
 
-struct LeafCursor<'cursor, 'tree, T: Debug> {
+pub struct LeafCursor<'cursor, 'tree, T: Debug> {
     container: NodeContainerRef<'cursor, 'tree, T>,
     position: TreePosition<'tree, T>,
     nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
@@ -336,7 +369,7 @@ impl<'cursor, 'tree, T: Debug> LeafCursor<'cursor, 'tree, T> {
 
         let cur = NodeCursor {
             node: self.container.get_mut().unwrap(),
-            nodes: self.nodes,
+            node_cache: self.nodes,
         };
 
         cur.node.repair_tree();
@@ -345,12 +378,11 @@ impl<'cursor, 'tree, T: Debug> LeafCursor<'cursor, 'tree, T> {
     }
 }
 
-enum TreeCursor<'cursor, 'tree, T: 'cursor + Debug> {
+pub enum TreeCursor<'cursor, 'tree, T: 'cursor + Debug> {
     Node(NodeCursor<'cursor, 'tree, T>),
     Leaf(LeafCursor<'cursor, 'tree, T>),
 }
 
-#[allow(unused)]
 impl<'cursor, 'tree, T: Debug> TreeCursor<'cursor, 'tree, T> {
     pub fn expect_node(self) -> NodeCursor<'cursor, 'tree, T> {
         if let TreeCursor::Node(n) = self {
@@ -368,14 +400,14 @@ impl<'cursor, 'tree, T: Debug> TreeCursor<'cursor, 'tree, T> {
         }
     }
 
-    pub fn from_node(
+    fn from_node(
         node: &'cursor mut RedBlackTreeNode<'tree, T>,
         nodes: &'cursor mut NodeCache<'tree, T>,
     ) -> TreeCursor<'cursor, 'tree, T> {
-        TreeCursor::Node(NodeCursor { node, nodes })
+        TreeCursor::Node(NodeCursor { node, node_cache: nodes })
     }
 
-    pub fn leaf_from_position(
+    fn leaf_from_position(
         container: NodeContainerRef<'cursor, 'tree, T>,
         position: TreePosition<'tree, T>,
         nodes: &'cursor mut NodeCache<'tree, T>,
@@ -406,7 +438,7 @@ impl<'tree, T: Debug> RedBlackTree<'tree, T> {
         let node = unsafe { &mut *self.nodes.get(&key)?.as_ptr() };
         Some(NodeCursor {
             node,
-            nodes: &mut self.nodes,
+            node_cache: &mut self.nodes,
         })
     }
 
