@@ -242,7 +242,7 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
                             parent.rotate(ChildType::Left);
                             parent = self;
                             ChildType::Right
-                        },
+                        }
                         (ChildType::Left, ChildType::Right) => {
                             parent.rotate(ChildType::Right);
                             parent = self;
@@ -476,7 +476,7 @@ mod tests {
                     .unwrap()
                     .as_ptr() as *const _;
                 let expected_node_ptr = actual_ptr as *const RedBlackTreeNode<_>;
-                assert_eq!(true, actual_node_ptr == expected_node_ptr);
+                assert!(actual_node_ptr == expected_node_ptr);
             }
 
             // Recurse left child.
@@ -511,6 +511,74 @@ mod tests {
             TreePosition::Root(NonNull::new(&actual.root as *const _ as *mut _).unwrap()),
             &actual.root,
             expected,
+        );
+        assert_eq!(0, nodes.len());
+    }
+
+    fn check_bst_node(
+        nodes: &mut NodeCache<usize>,
+        position: TreePosition<usize>,
+        actual: &NodeContainer<usize>,
+    ) -> usize {
+        if let Some(node) = actual.get() {
+            assert!(node.position == position);
+            if let Some(parent) = unsafe { node.position.parent() } {
+                if parent.color == Color::Red {
+                    assert!(node.color == Color::Black);
+                }
+
+                match node.position.child_type() {
+                    ChildType::Left => assert!(node.key < parent.key),
+                    ChildType::Right => assert!(node.key > parent.key),
+                }
+            } else {
+                assert_eq!(Color::Black, node.color);
+            }
+
+            // Ensure that the value in the tree matches this node.
+            {
+                let node_ptr =
+                    nodes.remove(&(node.key as *const usize)).unwrap().as_ptr() as *const _;
+                let expected_node_ptr = node_ptr as *const RedBlackTreeNode<_>;
+                assert!(node_ptr == expected_node_ptr);
+            }
+
+            // Recurse left child.
+            let left_d = check_bst_node(
+                nodes,
+                TreePosition::Child(
+                    NonNull::new(node as *const _ as *mut _).unwrap(),
+                    ChildType::Left,
+                ),
+                &node.left_child,
+            );
+            // Recurse right child.
+            let right_d = check_bst_node(
+                nodes,
+                TreePosition::Child(
+                    NonNull::new(node as *const _ as *mut _).unwrap(),
+                    ChildType::Right,
+                ),
+                &node.right_child,
+            );
+
+            assert_eq!(left_d, right_d);
+            if node.color == Color::Black {
+                left_d + 1
+            } else {
+                left_d
+            }
+        } else {
+            0
+        }
+    }
+
+    fn check_bst(actual: &RedBlackTree<usize>) {
+        let mut nodes = actual.nodes.clone();
+        check_bst_node(
+            &mut nodes,
+            TreePosition::Root(NonNull::new(&actual.root as *const _ as *mut _).unwrap()),
+            &actual.root,
         );
         assert_eq!(0, nodes.len());
     }
@@ -648,5 +716,30 @@ mod tests {
                 nd(7, Color::Red, None, None),
             ),
         );
+    }
+
+    #[test]
+    fn stress_test() {
+        let vals: Vec<usize> = vec![
+            93, 11, 3, 31, 1, 78, 16, 14, 2, 58, 19, 44, 68, 97, 41, 15, 81, 49, 79, 40, 52, 98,
+            91, 23, 95, 67, 30, 43, 62, 25, 96, 6, 100, 72, 37, 42, 38, 61, 74, 99, 39, 84, 50, 55,
+            90, 64, 75, 69, 45, 54, 26, 56, 27, 4, 18, 13, 88, 66, 51, 32,
+        ];
+
+        let mut t = RedBlackTree::<usize>::new();
+        for val in &vals {
+            let mut c = t.root();
+            while let TreeCursor::Node(nc) = c {
+                if nc.value() > val {
+                    c = nc.left_child();
+                } else {
+                    c = nc.right_child();
+                }
+            }
+            let leaf = c.expect_leaf();
+            leaf.insert(val);
+        }
+
+        check_bst(&t);
     }
 }
