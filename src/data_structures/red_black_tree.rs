@@ -36,7 +36,7 @@ impl<'node, T: Debug> Debug for NodeContainer<'node, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.get() {
             Some(v) => v.fmt(f),
-            None => write!(f, "()")
+            None => write!(f, "()"),
         }
     }
 }
@@ -190,7 +190,10 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         let container = unsafe { self.position.get_container() };
         let mut old_root = container.take().unwrap();
         let p = old_root.position.clone();
-        let mut new_root = (*old_root).child_container(direction.flip()).take().unwrap();
+        let mut new_root = (*old_root)
+            .child_container(direction.flip())
+            .take()
+            .unwrap();
         let pivot_child = new_root.child_container(direction).take();
 
         old_root.set_child(pivot_child, direction.flip());
@@ -238,7 +241,8 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
                     p.color = Color::Black;
                     grandparent.color = Color::Red;
                 } else if self.position.child_type() == ChildType::Right
-                && p.position.child_type() == ChildType::Right {
+                    && p.position.child_type() == ChildType::Right
+                {
                     grandparent.rotate(ChildType::Left);
                     p.color = Color::Black;
                     grandparent.color = Color::Red;
@@ -255,7 +259,11 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
 
 impl<'a, T: Debug> Debug for RedBlackTreeNode<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({:?} {:?} {:?} {:?})", self.key, self.color, self.left_child, self.right_child)
+        write!(
+            f,
+            "({:?} {:?} {:?} {:?})",
+            self.key, self.color, self.left_child, self.right_child
+        )
     }
 }
 
