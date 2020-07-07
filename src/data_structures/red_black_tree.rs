@@ -32,6 +32,15 @@ struct NodeContainer<'node, T: Debug> {
     value: Option<Pin<Box<RedBlackTreeNode<'node, T>>>>,
 }
 
+impl<'node, T: Debug> Debug for NodeContainer<'node, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.get() {
+            Some(v) => v.fmt(f),
+            None => write!(f, "()")
+        }
+    }
+}
+
 impl<'node, T: Debug> NodeContainer<'node, T> {
     pub fn take(&mut self) -> Option<Pin<Box<RedBlackTreeNode<'node, T>>>> {
         self.value.take()
@@ -178,15 +187,14 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
     }
 
     fn rotate(&mut self, direction: ChildType) {
-        assert!(direction == ChildType::Right);
         let container = unsafe { self.position.get_container() };
         let mut old_root = container.take().unwrap();
         let p = old_root.position.clone();
-        let mut new_root = (*old_root).left_child.take().unwrap();
-        let pivot_child = new_root.right_child.take();
+        let mut new_root = (*old_root).child_container(direction.flip()).take().unwrap();
+        let pivot_child = new_root.child_container(direction).take();
 
-        old_root.set_child(pivot_child, ChildType::Left);
-        new_root.set_child(Some(old_root), ChildType::Right);
+        old_root.set_child(pivot_child, direction.flip());
+        new_root.set_child(Some(old_root), direction);
         new_root.position = p;
         container.set_pinned(new_root);
     }
@@ -229,6 +237,11 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
                     grandparent.rotate(ChildType::Right);
                     p.color = Color::Black;
                     grandparent.color = Color::Red;
+                } else if self.position.child_type() == ChildType::Right
+                && p.position.child_type() == ChildType::Right {
+                    grandparent.rotate(ChildType::Left);
+                    p.color = Color::Black;
+                    grandparent.color = Color::Red;
                 } else {
                     unimplemented!()
                 }
@@ -237,6 +250,12 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
             // Insert case 1: node is root; color black.
             self.color = Color::Black;
         }
+    }
+}
+
+impl<'a, T: Debug> Debug for RedBlackTreeNode<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({:?} {:?} {:?} {:?})", self.key, self.color, self.left_child, self.right_child)
     }
 }
 
@@ -387,6 +406,12 @@ impl<'tree, T: Debug> RedBlackTree<'tree, T> {
     }
 }
 
+impl<'tree, T: Debug> Debug for RedBlackTree<'tree, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.root.fmt(f)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Color::Black, Color::Red, *};
@@ -533,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_rotate() {
+    fn test_insert_rotate_right() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
         let mut c = tree.root().expect_leaf().insert(&5);
         c = c.left_child().expect_leaf().insert(&4);
@@ -546,6 +571,26 @@ mod tests {
                 Color::Black,
                 nd(3, Color::Red, None, None),
                 nd(5, Color::Red, None, None),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_insert_rotate_left() {
+        let mut tree: RedBlackTree<usize> = RedBlackTree::new();
+        let mut c = tree.root().expect_leaf().insert(&5);
+        c = c.right_child().expect_leaf().insert(&6);
+        c.right_child().expect_leaf().insert(&7);
+
+        println!("{:?}", tree);
+
+        expect_tree(
+            &tree,
+            &nd(
+                6,
+                Color::Black,
+                nd(5, Color::Red, None, None),
+                nd(7, Color::Red, None, None),
             ),
         );
     }
