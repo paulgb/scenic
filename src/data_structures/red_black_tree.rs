@@ -486,14 +486,22 @@ impl<'tree, T: Debug> RedBlackTree<'tree, T> {
         }
     }
 
+    /// Swap the positions of the nodes associated with each key in the tree. Simply swaps the keys
+    /// within the nodes; the tree structure exactly the same.
     pub fn swap(&mut self, key1: *const T, key2: *const T) {
         let node1 = unsafe { &mut *self.nodes.remove(&key1).unwrap().as_ptr() };
         let node2 = unsafe { &mut *self.nodes.remove(&key2).unwrap().as_ptr() };
 
         std::mem::swap(&mut node1.key, &mut node2.key);
 
-        self.nodes.insert(node1.key, NonNull::new(node1 as *const RedBlackTreeNode<T> as *mut _).unwrap());
-        self.nodes.insert(node2.key, NonNull::new(node2 as *const RedBlackTreeNode<T> as *mut _).unwrap());
+        self.nodes.insert(
+            node1.key,
+            NonNull::new(node1 as *const RedBlackTreeNode<T> as *mut _).unwrap(),
+        );
+        self.nodes.insert(
+            node2.key,
+            NonNull::new(node2 as *const RedBlackTreeNode<T> as *mut _).unwrap(),
+        );
     }
 }
 
@@ -876,19 +884,14 @@ mod tests {
 
         let mut c = tree.root().unwrap_leaf().insert(v5);
         c = c.right_child().unwrap_leaf().insert(v6);
-        
+
         tree.swap(v5, v6);
 
         println!("{:?}", tree);
 
         expect_tree(
             &tree,
-            &nd(
-                6,
-                Color::Black,
-                None,
-                nd(5, Color::Red, None, None),
-            ),
+            &nd(6, Color::Black, None, nd(5, Color::Red, None, None)),
         );
     }
 }
