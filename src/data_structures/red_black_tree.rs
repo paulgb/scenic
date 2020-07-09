@@ -153,15 +153,15 @@ impl<'position, T: Debug> TreePosition<'position, T> {
     /// getting nodes based on position.
     unsafe fn get(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
         match self {
-            TreePosition::Child(ptr, ct) => (*ptr.as_ptr()).child(*ct),
+            TreePosition::Child(ptr, ct) => (*ptr.as_ptr()).child_mut(*ct),
             TreePosition::Root(r) => (*r.as_ptr()).get_mut(),
         }
     }
 
     /// Returns a pointer to the container for the node referred to.
-    unsafe fn get_container(&self) -> NodeContainerRef<T> {
+    unsafe fn get_container(&self) -> NodeContainerRef<'position, 'position, T> {
         match self {
-            TreePosition::Child(ptr, ct) => (*ptr.as_ptr()).child_container(*ct),
+            TreePosition::Child(ptr, ct) => (*ptr.as_ptr()).child_container_mut(*ct),
             TreePosition::Root(r) => &mut *r.as_ptr(),
         }
     }
@@ -177,13 +177,28 @@ struct RedBlackTreeNode<'node, T: Debug> {
 }
 
 impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
-    /// Returns an optional mutable reference to the child of the type provided.
-    fn child(&mut self, child_type: ChildType) -> Option<&mut RedBlackTreeNode<'node, T>> {
-        self.child_container(child_type).get_mut()
+    /// Returns an optional reference to the child of the type provided.
+    #[allow(unused)]
+    fn child(&self, child_type: ChildType) -> Option<&RedBlackTreeNode<'node, T>> {
+        self.child_container(child_type).get()
     }
 
     /// Returns a mutable reference to the container of the requested child node.
-    fn child_container<'a>(
+    #[allow(unused)]
+    fn child_container<'a>(&'a self, child_type: ChildType) -> &'a NodeContainer<'node, T> {
+        match child_type {
+            ChildType::Left => &self.left_child,
+            ChildType::Right => &self.right_child,
+        }
+    }
+
+    /// Returns an optional mutable reference to the child of the type provided.
+    fn child_mut(&mut self, child_type: ChildType) -> Option<&mut RedBlackTreeNode<'node, T>> {
+        self.child_container_mut(child_type).get_mut()
+    }
+
+    /// Returns a mutable reference to the container of the requested child node.
+    fn child_container_mut<'a>(
         &'a mut self,
         child_type: ChildType,
     ) -> NodeContainerRef<'a, 'node, T> {
@@ -202,7 +217,7 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         child_type: ChildType,
     ) {
         let cc = NonNull::new(self as *mut _).unwrap();
-        let ch = self.child_container(child_type);
+        let ch = self.child_container_mut(child_type);
         if let Some(mut chh) = child {
             chh.position = TreePosition::Child(cc, child_type);
             ch.set_pinned(chh);
@@ -217,10 +232,10 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         let mut old_root = container.take().unwrap();
         let p = old_root.position.clone();
         let mut new_root = (*old_root)
-            .child_container(direction.flip())
+            .child_container_mut(direction.flip())
             .take()
             .unwrap();
-        let pivot_child = new_root.child_container(direction).take();
+        let pivot_child = new_root.child_container_mut(direction).take();
 
         old_root.set_child(pivot_child, direction.flip());
         new_root.set_child(Some(old_root), direction);
@@ -303,7 +318,7 @@ impl<'a, T: Debug> Debug for RedBlackTreeNode<'a, T> {
     }
 }
 
-/// Cursor for accessing and manipulating a node of the tree. Contains a
+/// Cursor that points to an existing node in the tree. Contains a
 /// mutable reference to a tree's `NodeCache`, because it needs to be
 /// updated for inserts and deletes. This means that only one NodeCursor
 /// may exist at once, even though the `node` references might not conflict.
@@ -313,25 +328,31 @@ pub struct NodeCursor<'cursor, 'tree, T: Debug> {
 }
 
 impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
-    /// Return a cursor to the given child.
+    /// Convert into a cursor for the given child.
     fn child(self, child_type: ChildType) -> TreeCursor<'cursor, 'tree, T> {
         let position = TreePosition::Child(NonNull::new(self.node as *mut _).unwrap(), child_type);
-        let container = self.node.child_container(child_type);
+        let container = self.node.child_container_mut(child_type);
         if container.empty() {
-            TreeCursor::leaf_from_position(container, position, self.node_cache)
+            TreeCursor::leaf_from_position(position, self.node_cache)
         } else {
             TreeCursor::from_node(container.get_mut().unwrap(), self.node_cache)
         }
     }
 
+    /// Convert into a cursor to the left child.
     pub fn left_child(self) -> TreeCursor<'cursor, 'tree, T> {
         self.child(ChildType::Left)
     }
 
+    /// Convert into a cursor for the right child.
     pub fn right_child(self) -> TreeCursor<'cursor, 'tree, T> {
         self.child(ChildType::Right)
     }
 
+    /// Convert into an (optional) cursor for the parent node. Although we don't own a
+    /// reference to the parent, this is safe because we own a mutable reference to the
+    /// tree's `NodeCache`, and therefore another cursor referencing the parent can't
+    /// exist in an overlapping lifetime.
     pub fn parent(self) -> Option<NodeCursor<'cursor, 'tree, T>> {
         match self.node.position {
             TreePosition::Root(_) => None,
@@ -342,33 +363,37 @@ impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
         }
     }
 
-    pub fn value(&self) -> &T {
+    /// Return the key associated with the node at this cursor.
+    pub fn key(&self) -> &T {
         self.node.key
     }
 }
 
+/// Cursor that points to a leaf node in a tree, allowing insertion.
 pub struct LeafCursor<'cursor, 'tree, T: Debug> {
-    container: NodeContainerRef<'cursor, 'tree, T>,
     position: TreePosition<'tree, T>,
     nodes: &'cursor mut HashMap<*const T, NodePointer<'tree, T>>,
 }
 
-#[allow(unused)]
 impl<'cursor, 'tree, T: Debug> LeafCursor<'cursor, 'tree, T> {
+    /// Insert the key into this node's position in the tree. Consumes this
+    /// `LeafCursor` and returns a `NodeCursor` to the inserted node.
     pub fn insert(self, key: &'tree T) -> NodeCursor<'cursor, 'tree, T> {
         let node = RedBlackTreeNode {
             key,
             color: Color::Red,
-            position: self.position,
+            position: self.position.clone(),
             left_child: NodeContainer::new(),
             right_child: NodeContainer::new(),
         };
 
-        self.container.set(node);
-        self.nodes.insert(key, self.container.get_ptr().unwrap());
+        let container = unsafe { self.position.get_container() };
+
+        container.set(node);
+        self.nodes.insert(key, container.get_ptr().unwrap());
 
         let cur = NodeCursor {
-            node: self.container.get_mut().unwrap(),
+            node: container.get_mut().unwrap(),
             node_cache: self.nodes,
         };
 
@@ -378,13 +403,16 @@ impl<'cursor, 'tree, T: Debug> LeafCursor<'cursor, 'tree, T> {
     }
 }
 
+/// A cursor that points either to an existing node of the tree or
+/// to a leaf.
 pub enum TreeCursor<'cursor, 'tree, T: 'cursor + Debug> {
     Node(NodeCursor<'cursor, 'tree, T>),
     Leaf(LeafCursor<'cursor, 'tree, T>),
 }
 
 impl<'cursor, 'tree, T: Debug> TreeCursor<'cursor, 'tree, T> {
-    pub fn expect_node(self) -> NodeCursor<'cursor, 'tree, T> {
+    /// Extract a `NodeCursor` from this. Panic if it is a leaf.
+    pub fn unwrap_node(self) -> NodeCursor<'cursor, 'tree, T> {
         if let TreeCursor::Node(n) = self {
             n
         } else {
@@ -392,7 +420,8 @@ impl<'cursor, 'tree, T: Debug> TreeCursor<'cursor, 'tree, T> {
         }
     }
 
-    pub fn expect_leaf(self) -> LeafCursor<'cursor, 'tree, T> {
+    /// Extract a `LeafCursor` from this. Panic if it is a node.
+    pub fn unwrap_leaf(self) -> LeafCursor<'cursor, 'tree, T> {
         if let TreeCursor::Leaf(n) = self {
             n
         } else {
@@ -400,33 +429,36 @@ impl<'cursor, 'tree, T: Debug> TreeCursor<'cursor, 'tree, T> {
         }
     }
 
+    /// Construct a `TreeCursor::Node` from a mutable node reference.
     fn from_node(
         node: &'cursor mut RedBlackTreeNode<'tree, T>,
         nodes: &'cursor mut NodeCache<'tree, T>,
     ) -> TreeCursor<'cursor, 'tree, T> {
-        TreeCursor::Node(NodeCursor { node, node_cache: nodes })
+        TreeCursor::Node(NodeCursor {
+            node,
+            node_cache: nodes,
+        })
     }
 
+    /// Construct a `TreeCursor::Leaf` from a container and position.
     fn leaf_from_position(
-        container: NodeContainerRef<'cursor, 'tree, T>,
         position: TreePosition<'tree, T>,
         nodes: &'cursor mut NodeCache<'tree, T>,
     ) -> TreeCursor<'cursor, 'tree, T> {
-        TreeCursor::Leaf(LeafCursor {
-            container,
-            position,
-            nodes,
-        })
+        TreeCursor::Leaf(LeafCursor { position, nodes })
     }
 }
 
-struct RedBlackTree<'tree, T: Debug> {
+/// A data structure which is both ordered and indexed by key, allowing a list
+/// to be maintained with random inserts, swaps, and deletions.
+/// The implementation combines a red-black tree with a hashmap.
+pub struct RedBlackTree<'tree, T: Debug> {
     nodes: NodeCache<'tree, T>,
     root: NodeContainer<'tree, T>,
 }
 
-#[allow(unused)]
 impl<'tree, T: Debug> RedBlackTree<'tree, T> {
+    /// Construct an empty tree.
     pub fn new() -> RedBlackTree<'tree, T> {
         RedBlackTree {
             nodes: HashMap::new(),
@@ -434,6 +466,7 @@ impl<'tree, T: Debug> RedBlackTree<'tree, T> {
         }
     }
 
+    /// Returns a `NodeCursor` for the given node, if it is found in the tree.
     pub fn get<'cursor>(&'cursor mut self, key: *const T) -> Option<NodeCursor<'cursor, 'tree, T>> {
         let node = unsafe { &mut *self.nodes.get(&key)?.as_ptr() };
         Some(NodeCursor {
@@ -442,10 +475,11 @@ impl<'tree, T: Debug> RedBlackTree<'tree, T> {
         })
     }
 
+    /// Returns the root node of the tree, whether it is a node or a leaf.
     pub fn root<'cursor>(&'cursor mut self) -> TreeCursor<'cursor, 'tree, T> {
         if self.root.empty() {
             let mm = NonNull::from(&mut self.root);
-            TreeCursor::leaf_from_position(&mut self.root, TreePosition::Root(mm), &mut self.nodes)
+            TreeCursor::leaf_from_position(TreePosition::Root(mm), &mut self.nodes)
         } else {
             let v = self.root.get_mut().unwrap();
             TreeCursor::from_node(v, &mut self.nodes)
@@ -463,6 +497,7 @@ impl<'tree, T: Debug> Debug for RedBlackTree<'tree, T> {
 mod tests {
     use super::{Color::Black, Color::Red, *};
 
+    /// A representation of the "expected" shape of the tree resulting from operations.
     struct NodeExpectation {
         key: usize,
         left_child: Option<Box<NodeExpectation>>,
@@ -470,6 +505,7 @@ mod tests {
         color: Color,
     }
 
+    /// A helper function to build a `NodeExpectation`.
     fn nd(
         key: usize,
         color: Color,
@@ -484,6 +520,8 @@ mod tests {
         }))
     }
 
+    /// Recursively compare an expected node with the corresponding actual tree node,
+    /// panic if there are any issues.
     fn expect_node(
         nodes: &mut NodeCache<usize>,
         position: TreePosition<usize>,
@@ -536,6 +574,7 @@ mod tests {
         }
     }
 
+    /// Compare the root of the tree with the given `NodeExpectation`.
     fn expect_tree(actual: &RedBlackTree<usize>, expected: &Option<Box<NodeExpectation>>) {
         let mut nodes = actual.nodes.clone();
         expect_node(
@@ -547,27 +586,47 @@ mod tests {
         assert_eq!(0, nodes.len());
     }
 
-    fn check_bst_node(
+    /// Check that the tree is valid. Returns the number of black nodes on the path to each descendent
+    /// (which, according to rule 5, is the same for all descendant paths of a given node).
+    ///
+    /// The rules of a red-black tree (per Wikipedia) are:
+    /// 1. Each node is either red or black.
+    /// 2. The root is black.
+    /// 3. All leaves (NIL) are black.
+    /// 4. If a node is red, then both its children are black.
+    /// 5. Every path from a given node to any of its descendant NIL nodes goes through the same number of black nodes.
+    ///
+    /// #1 is enforced by the type system; #3 is handled implicitly (we don't store the color of leaf nodes). The
+    /// other properties are checked here, as well as these data structure invariants:
+    ///
+    /// 1. A node's position should match the position where we found it.
+    /// 2. A node's location in the node cache should point to that node.
+    /// 3. Every node in the node cache should be in the tree (i.e. we shouldn't have
+    ///    dangling pointers in the node cache).
+    ///
+    /// #3 is tested by removing nodes from the node cache as they are reached; when called on the root node the resulting
+    /// node cache should be empty. The others are tested explicitly.
+    fn check_tree_node(
         nodes: &mut NodeCache<usize>,
         position: TreePosition<usize>,
         actual: &NodeContainer<usize>,
     ) -> usize {
         if let Some(node) = actual.get() {
+            // Ensure that the node's reference to its position matches the position in the tree at which we
+            // found it. (invariant #1)
             assert!(node.position == position);
+
             if let Some(parent) = unsafe { node.position.parent() } {
+                // If this node has a red parent, this node should be black. (property #4)
                 if parent.color == Color::Red {
                     assert!(node.color == Color::Black);
                 }
-
-                match node.position.child_type() {
-                    ChildType::Left => assert!(node.key < parent.key),
-                    ChildType::Right => assert!(node.key > parent.key),
-                }
             } else {
+                // If this node is the root, it should be black. (property #2)
                 assert_eq!(Color::Black, node.color);
             }
 
-            // Ensure that the value in the tree matches this node.
+            // Ensure that the value in the tree matches this node. (invariant #2)
             {
                 let node_ptr =
                     nodes.remove(&(node.key as *const usize)).unwrap().as_ptr() as *const _;
@@ -576,7 +635,7 @@ mod tests {
             }
 
             // Recurse left child.
-            let left_d = check_bst_node(
+            let left_d = check_tree_node(
                 nodes,
                 TreePosition::Child(
                     NonNull::new(node as *const _ as *mut _).unwrap(),
@@ -585,7 +644,7 @@ mod tests {
                 &node.left_child,
             );
             // Recurse right child.
-            let right_d = check_bst_node(
+            let right_d = check_tree_node(
                 nodes,
                 TreePosition::Child(
                     NonNull::new(node as *const _ as *mut _).unwrap(),
@@ -594,20 +653,26 @@ mod tests {
                 &node.right_child,
             );
 
+            // Ensure that the black distance to ancestors along the left and right children is the same. (property #5)
             assert_eq!(left_d, right_d);
             if node.color == Color::Black {
+                // This node is black, so count it in the black distance to descendants.
                 left_d + 1
             } else {
+                // This node is red, so black distance to descendants is unchanged.
                 left_d
             }
         } else {
+            // Leaf node; return a black distance of 0 (we don't count the leaf node as being on the path).
             0
         }
     }
 
-    fn check_bst(actual: &RedBlackTree<usize>) {
+    /// Check a tree according to properties of a red black tree as well as invariants specific to our
+    /// implementation.
+    fn check_tree(actual: &RedBlackTree<usize>) {
         let mut nodes = actual.nodes.clone();
-        check_bst_node(
+        check_tree_node(
             &mut nodes,
             TreePosition::Root(NonNull::new(&actual.root as *const _ as *mut _).unwrap()),
             &actual.root,
@@ -615,11 +680,27 @@ mod tests {
         assert_eq!(0, nodes.len());
     }
 
+    fn check_bst(node: &RedBlackTreeNode<usize>) -> (usize, usize) {
+        let mut min = *node.key;
+        let mut max = *node.key;
+        if let Some(left) = node.child(ChildType::Left) {
+            let (left_min, left_max) = check_bst(left);
+            assert!(left_max < *node.key);
+            min = left_min;
+        }
+        if let Some(right) = node.child(ChildType::Right) {
+            let (right_min, right_max) = check_bst(right);
+            assert!(right_min > *node.key);
+            max = right_max;
+        }
+        (min, max)
+    }
+
     #[test]
     fn test_root_insert() {
         // Insert case 1 on wikipedia.
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        let leaf = tree.root().expect_leaf();
+        let leaf = tree.root().unwrap_leaf();
 
         leaf.insert(&4);
 
@@ -630,16 +711,16 @@ mod tests {
     fn test_insert_children() {
         // Insert case 2 on wikipedia.
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        let leaf = tree.root().expect_leaf();
+        let leaf = tree.root().unwrap_leaf();
         let mut root = leaf.insert(&4);
-        let result = root.left_child().expect_leaf().insert(&3);
+        let result = root.left_child().unwrap_leaf().insert(&3);
         assert_eq!(&3, result.node.key);
         assert_eq!(Red, result.node.color);
 
-        root = tree.root().expect_node();
-        let five = root.right_child().expect_leaf().insert(&5);
+        root = tree.root().unwrap_node();
+        let five = root.right_child().unwrap_leaf().insert(&5);
         assert_eq!(Red, five.node.color);
-        assert_eq!(&4, five.parent().unwrap().value());
+        assert_eq!(&4, five.parent().unwrap().key());
 
         expect_tree(
             &tree,
@@ -651,15 +732,15 @@ mod tests {
     fn test_insert_case_three() {
         // Insert case 3 on wikipedia: insert under red parent with red uncle.
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        let root = tree.root().expect_leaf().insert(&5);
-        root.right_child().expect_leaf().insert(&6);
+        let root = tree.root().unwrap_leaf().insert(&5);
+        root.right_child().unwrap_leaf().insert(&6);
         let left = tree
             .root()
-            .expect_node()
+            .unwrap_node()
             .left_child()
-            .expect_leaf()
+            .unwrap_leaf()
             .insert(&4);
-        left.left_child().expect_leaf().insert(&3);
+        left.left_child().unwrap_leaf().insert(&3);
 
         expect_tree(
             &tree,
@@ -675,9 +756,9 @@ mod tests {
     #[test]
     fn test_insert_rotate_right() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        let mut c = tree.root().expect_leaf().insert(&5);
-        c = c.left_child().expect_leaf().insert(&4);
-        c.left_child().expect_leaf().insert(&3);
+        let mut c = tree.root().unwrap_leaf().insert(&5);
+        c = c.left_child().unwrap_leaf().insert(&4);
+        c.left_child().unwrap_leaf().insert(&3);
 
         expect_tree(
             &tree,
@@ -693,9 +774,9 @@ mod tests {
     #[test]
     fn test_insert_rotate_left() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        let mut c = tree.root().expect_leaf().insert(&5);
-        c = c.right_child().expect_leaf().insert(&6);
-        c.right_child().expect_leaf().insert(&7);
+        let mut c = tree.root().unwrap_leaf().insert(&5);
+        c = c.right_child().unwrap_leaf().insert(&6);
+        c.right_child().unwrap_leaf().insert(&7);
 
         println!("{:?}", tree);
 
@@ -713,9 +794,9 @@ mod tests {
     #[test]
     fn test_two_rotation_insert() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        let mut c = tree.root().expect_leaf().insert(&5);
-        c = c.left_child().expect_leaf().insert(&3);
-        c.right_child().expect_leaf().insert(&4);
+        let mut c = tree.root().unwrap_leaf().insert(&5);
+        c = c.left_child().unwrap_leaf().insert(&3);
+        c.right_child().unwrap_leaf().insert(&4);
 
         println!("{:?}", tree);
 
@@ -733,9 +814,9 @@ mod tests {
     #[test]
     fn test_two_rotation_insert_reverse() {
         let mut tree: RedBlackTree<usize> = RedBlackTree::new();
-        let mut c = tree.root().expect_leaf().insert(&5);
-        c = c.right_child().expect_leaf().insert(&7);
-        c.left_child().expect_leaf().insert(&6);
+        let mut c = tree.root().unwrap_leaf().insert(&5);
+        c = c.right_child().unwrap_leaf().insert(&7);
+        c.left_child().unwrap_leaf().insert(&6);
 
         println!("{:?}", tree);
 
@@ -762,16 +843,17 @@ mod tests {
         for val in &vals {
             let mut c = t.root();
             while let TreeCursor::Node(nc) = c {
-                if nc.value() > val {
+                if nc.key() > val {
                     c = nc.left_child();
                 } else {
                     c = nc.right_child();
                 }
             }
-            let leaf = c.expect_leaf();
+            let leaf = c.unwrap_leaf();
             leaf.insert(val);
         }
 
-        check_bst(&t);
+        check_tree(&t);
+        check_bst(t.root.get_mut().unwrap());
     }
 }
