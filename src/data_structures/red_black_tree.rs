@@ -88,7 +88,7 @@ impl<'node, T: Debug> NodeContainer<'node, T> {
     /// Returns an optional NonNull pointer to the content of this container.
     fn get_ptr(&self) -> Option<NodePointer<'node, T>> {
         match &self.value {
-            Some(p) => NonNull::new((&**p) as *const _ as *mut RedBlackTreeNode<T>),
+            Some(p) => NonNull::new((&**p) as *const RedBlackTreeNode<T> as *mut _),
             None => None,
         }
     }
@@ -485,6 +485,16 @@ impl<'tree, T: Debug> RedBlackTree<'tree, T> {
             TreeCursor::from_node(v, &mut self.nodes)
         }
     }
+
+    pub fn swap(&mut self, key1: *const T, key2: *const T) {
+        let node1 = unsafe { &mut *self.nodes.remove(&key1).unwrap().as_ptr() };
+        let node2 = unsafe { &mut *self.nodes.remove(&key2).unwrap().as_ptr() };
+
+        std::mem::swap(&mut node1.key, &mut node2.key);
+
+        self.nodes.insert(node1.key, NonNull::new(node1 as *const RedBlackTreeNode<T> as *mut _).unwrap());
+        self.nodes.insert(node2.key, NonNull::new(node2 as *const RedBlackTreeNode<T> as *mut _).unwrap());
+    }
 }
 
 impl<'tree, T: Debug> Debug for RedBlackTree<'tree, T> {
@@ -543,7 +553,7 @@ mod tests {
             {
                 let actual_node_ptr = nodes
                     .remove(&(actual_node.key as *const usize))
-                    .unwrap()
+                    .expect("Node should be in nodes cache, but isn't.")
                     .as_ptr() as *const _;
                 let expected_node_ptr = actual_ptr as *const RedBlackTreeNode<_>;
                 assert!(actual_node_ptr == expected_node_ptr);
@@ -855,5 +865,30 @@ mod tests {
 
         check_tree(&t);
         check_bst(t.root.get_mut().unwrap());
+    }
+
+    #[test]
+    fn swap_test() {
+        let mut tree: RedBlackTree<usize> = RedBlackTree::new();
+
+        let v5: &usize = &5;
+        let v6: &usize = &6;
+
+        let mut c = tree.root().unwrap_leaf().insert(v5);
+        c = c.right_child().unwrap_leaf().insert(v6);
+        
+        tree.swap(v5, v6);
+
+        println!("{:?}", tree);
+
+        expect_tree(
+            &tree,
+            &nd(
+                6,
+                Color::Black,
+                None,
+                nd(5, Color::Red, None, None),
+            ),
+        );
     }
 }
