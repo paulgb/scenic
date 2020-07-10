@@ -81,8 +81,11 @@ impl<'node, T: Debug> NodeContainer<'node, T> {
     }
 
     /// Sets the value of this container to the given already-pinned RedBlackTree.
-    fn set_pinned(&mut self, value: Pin<Box<RedBlackTreeNode<'node, T>>>) {
-        self.value.replace(value);
+    fn set_pinned(&mut self, value: Option<Pin<Box<RedBlackTreeNode<'node, T>>>>) {
+        match value {
+            Some(v) => self.value.replace(v),
+            None => self.value.take()
+        };
     }
 
     /// Returns an optional NonNull pointer to the content of this container.
@@ -124,6 +127,13 @@ impl<'position, T: Debug> Clone for TreePosition<'position, T> {
 }
 
 impl<'position, T: Debug> TreePosition<'position, T> {
+    fn is_root(&self) -> bool {
+        match &self {
+            TreePosition::Root(_) => true,
+            _ => false
+        }
+    }
+
     /// Returns the parent to this node, if it exists.
     /// This is unsafe because the resulting borrow aliases the pointer passed in, which is not consumed.
     unsafe fn parent(&self) -> Option<&mut RedBlackTreeNode<'position, T>> {
@@ -220,7 +230,7 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         let ch = self.child_container_mut(child_type);
         if let Some(mut chh) = child {
             chh.position = TreePosition::Child(cc, child_type);
-            ch.set_pinned(chh);
+            ch.set_pinned(Some(chh));
         }
     }
 
@@ -240,7 +250,7 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         old_root.set_child(pivot_child, direction.flip());
         new_root.set_child(Some(old_root), direction);
         new_root.position = p;
-        container.set_pinned(new_root);
+        container.set_pinned(Some(new_root));
     }
 
     /// Returns the color of an optional node. The `None` value here represents a leaf node,
@@ -366,6 +376,36 @@ impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
     /// Return the key associated with the node at this cursor.
     pub fn key(&self) -> &T {
         self.node.key
+    }
+
+    /// Delete the node from the tree.
+    pub fn delete(self) {
+        let container = unsafe { self.node.position.get_container() };
+        self.node_cache.remove(&(self.node.key as *const _));
+
+        let replacement = if self.node.left_child.empty() {
+            self.node.right_child.take()
+        } else if self.node.right_child.empty() {
+            self.node.left_child.take()
+        } else {
+            unimplemented!()
+        };
+
+        container.set_pinned(replacement);
+        let node = container.get_mut();
+
+        match node {
+            Some(r) => {
+                r.position = self.node.position.clone();
+
+                if self.node.position.is_root() {
+                    r.color = Color::Black;
+                } else {
+                    unimplemented!()
+                }
+            },
+            None => ()
+        }        
     }
 }
 
@@ -842,9 +882,9 @@ mod tests {
             &tree,
             &nd(
                 6,
-                Color::Black,
-                nd(5, Color::Red, None, None),
-                nd(7, Color::Red, None, None),
+                Black,
+                nd(5, Red, None, None),
+                nd(7, Red, None, None),
             ),
         );
     }
@@ -882,8 +922,8 @@ mod tests {
         let v5: &usize = &5;
         let v6: &usize = &6;
 
-        let mut c = tree.root().unwrap_leaf().insert(v5);
-        c = c.right_child().unwrap_leaf().insert(v6);
+        let c = tree.root().unwrap_leaf().insert(v5);
+        c.right_child().unwrap_leaf().insert(v6);
 
         tree.swap(v5, v6);
 
@@ -891,7 +931,27 @@ mod tests {
 
         expect_tree(
             &tree,
-            &nd(6, Color::Black, None, nd(5, Color::Red, None, None)),
+            &nd(6, Black, None, nd(5, Red, None, None)),
+        );
+    }
+
+    #[test]
+    fn simple_delete() {
+        let mut tree: RedBlackTree<usize> = RedBlackTree::new();
+        let mut c = tree.root().unwrap_leaf().insert(&7);
+        c.left_child().unwrap_leaf().insert(&4);
+
+        expect_tree(
+            &tree,
+            &nd(7, Black, nd(4, Red, None, None), None),
+        );
+
+        c = tree.root().unwrap_node();
+        c.delete();
+
+        expect_tree(
+            &tree,
+            &nd(4, Black, None, None),
         );
     }
 }
