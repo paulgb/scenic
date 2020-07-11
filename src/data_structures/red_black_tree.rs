@@ -417,7 +417,7 @@ impl<'cursor, 'tree, T: Debug> LeafCursor<'cursor, 'tree, T> {
         let node = RedBlackTreeNode {
             key,
             color: Color::Red,
-            position: self.position.clone(),
+            position: self.position.clone(), // Note: this is overwritten anyway.
             left_child: NodeContainer::new(),
             right_child: NodeContainer::new(),
         };
