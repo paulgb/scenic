@@ -75,19 +75,6 @@ impl<'node, T: Debug> NodeContainer<'node, T> {
         NodeContainer { value: None }
     }
 
-    /// Sets the value of this container to the given RedBlackTree.
-    fn set(&mut self, value: RedBlackTreeNode<'node, T>) {
-        self.value.replace(Box::pin(value));
-    }
-
-    /// Sets the value of this container to the given already-pinned RedBlackTree.
-    fn set_pinned(&mut self, value: Option<Pin<Box<RedBlackTreeNode<'node, T>>>>) {
-        match value {
-            Some(v) => self.value.replace(v),
-            None => self.value.take()
-        };
-    }
-
     /// Returns an optional NonNull pointer to the content of this container.
     fn get_ptr(&self) -> Option<NodePointer<'node, T>> {
         match &self.value {
@@ -130,7 +117,7 @@ impl<'position, T: Debug> TreePosition<'position, T> {
     fn is_root(&self) -> bool {
         match &self {
             TreePosition::Root(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -174,6 +161,25 @@ impl<'position, T: Debug> TreePosition<'position, T> {
             TreePosition::Child(ptr, ct) => (*ptr.as_ptr()).child_container_mut(*ct),
             TreePosition::Root(r) => &mut *r.as_ptr(),
         }
+    }
+
+    /// Sets the value of this container to the given RedBlackTree.
+    fn set(&self, value: RedBlackTreeNode<'position, T>) {
+        self.set_pinned(Some(Box::pin(value)));
+    }
+
+    /// Sets the value of this container to the given already-pinned RedBlackTree.
+    fn set_pinned(&self, value: Option<Pin<Box<RedBlackTreeNode<'position, T>>>>) {
+        let container = unsafe { self.get_container() };
+        match value {
+            Some(mut v) => {
+                v.position = self.clone();
+                container.value.replace(v);
+            }
+            None => {
+                container.value.take();
+            }
+        };
     }
 }
 
@@ -226,31 +232,22 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
         child: Option<Pin<Box<RedBlackTreeNode<'node, T>>>>,
         child_type: ChildType,
     ) {
-        let cc = NonNull::new(self as *mut _).unwrap();
-        let ch = self.child_container_mut(child_type);
-        if let Some(mut chh) = child {
-            chh.position = TreePosition::Child(cc, child_type);
-            ch.set_pinned(Some(chh));
-        }
+        let position = TreePosition::Child(NonNull::new(self as *mut _).unwrap(), child_type);
+        position.set_pinned(child);
     }
 
     /// Rotate this node in the given direction. If the direction is Right, the left child
     /// of this node becomes its parent. If the direction is Left, the right child of this
     /// node becomes its parent.
     fn rotate(&mut self, direction: ChildType) {
+        let position = self.position.clone();
         let container = unsafe { self.position.get_container() };
-        let mut old_root = container.take().unwrap();
-        let p = old_root.position.clone();
-        let mut new_root = (*old_root)
-            .child_container_mut(direction.flip())
-            .take()
-            .unwrap();
+        let mut new_root = self.child_container_mut(direction.flip()).take().unwrap();
         let pivot_child = new_root.child_container_mut(direction).take();
 
-        old_root.set_child(pivot_child, direction.flip());
-        new_root.set_child(Some(old_root), direction);
-        new_root.position = p;
-        container.set_pinned(Some(new_root));
+        self.set_child(pivot_child, direction.flip());
+        new_root.set_child(container.take(), direction);
+        position.set_pinned(Some(new_root));
     }
 
     /// Returns the color of an optional node. The `None` value here represents a leaf node,
@@ -391,21 +388,19 @@ impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
             unimplemented!()
         };
 
-        container.set_pinned(replacement);
+        self.node.position.set_pinned(replacement);
         let node = container.get_mut();
 
         match node {
             Some(r) => {
-                r.position = self.node.position.clone();
-
                 if self.node.position.is_root() {
                     r.color = Color::Black;
                 } else {
                     unimplemented!()
                 }
-            },
-            None => ()
-        }        
+            }
+            None => (),
+        }
     }
 }
 
@@ -429,7 +424,7 @@ impl<'cursor, 'tree, T: Debug> LeafCursor<'cursor, 'tree, T> {
 
         let container = unsafe { self.position.get_container() };
 
-        container.set(node);
+        self.position.set(node);
         self.nodes.insert(key, container.get_ptr().unwrap());
 
         let cur = NodeCursor {
@@ -880,12 +875,7 @@ mod tests {
 
         expect_tree(
             &tree,
-            &nd(
-                6,
-                Black,
-                nd(5, Red, None, None),
-                nd(7, Red, None, None),
-            ),
+            &nd(6, Black, nd(5, Red, None, None), nd(7, Red, None, None)),
         );
     }
 
@@ -929,10 +919,7 @@ mod tests {
 
         println!("{:?}", tree);
 
-        expect_tree(
-            &tree,
-            &nd(6, Black, None, nd(5, Red, None, None)),
-        );
+        expect_tree(&tree, &nd(6, Black, None, nd(5, Red, None, None)));
     }
 
     #[test]
@@ -941,17 +928,11 @@ mod tests {
         let mut c = tree.root().unwrap_leaf().insert(&7);
         c.left_child().unwrap_leaf().insert(&4);
 
-        expect_tree(
-            &tree,
-            &nd(7, Black, nd(4, Red, None, None), None),
-        );
+        expect_tree(&tree, &nd(7, Black, nd(4, Red, None, None), None));
 
         c = tree.root().unwrap_node();
         c.delete();
 
-        expect_tree(
-            &tree,
-            &nd(4, Black, None, None),
-        );
+        expect_tree(&tree, &nd(4, Black, None, None));
     }
 }
