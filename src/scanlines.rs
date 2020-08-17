@@ -11,6 +11,8 @@ pub enum LineEvent {
     End,
 }
 
+/// Represents an entry into the priority queue of events we encounter as we
+/// scan the scene. Events are sorted in order of where in the scene they appear.
 #[derive(PartialEq, Ord, Eq)]
 pub enum SceneEvent<'a> {
     VertexEvent(Vertex<'a>),
@@ -18,7 +20,7 @@ pub enum SceneEvent<'a> {
 }
 
 impl<'a> PartialOrd for SceneEvent<'a> {
-    // Ordering is inverted because PriorityQueue is a max queue and we want a
+    // Ordering is inverted because BinaryHeap is a max queue and we want a
     // min queue.
     fn partial_cmp(&self, other: &SceneEvent) -> Option<Ordering> {
         match other.point().cmp(&self.point()) {
@@ -46,8 +48,13 @@ impl<'a> SceneEvent<'a> {
     }
 }
 
+/// Represents the state of the scanner at a discrete step in the
+/// scanning process.
 pub struct ScanState<'a> {
-    pub pointer: Option<Point>,
+    /// The last point in the scene which we have visited, or `None` if
+    /// we haven't visited any point yet.
+    pub cursor: Option<Point>,
+    /// A priority queue of known remaining events in the scene.
     pub events: BinaryHeap<SceneEvent<'a>>,
 }
 
@@ -57,7 +64,7 @@ impl<'a> ScanState<'a> {
     pub fn step(&mut self) -> StepResult<'a> {
         let event = self.events.pop();
         if let Some(e) = event {
-            self.pointer = Some(e.point());
+            self.cursor = Some(e.point());
 
             match e {
                 SceneEvent::VertexEvent(v) => {
@@ -76,7 +83,7 @@ impl<'a> ScanState<'a> {
                 SceneEvent::IntersectionEvent(_, line, line_event) => vec![(line, line_event)],
             }
         } else {
-            self.pointer = None;
+            self.cursor = None;
             Vec::new()
         }
     }
@@ -94,7 +101,7 @@ impl<'a> ScanState<'a> {
         }
 
         ScanState {
-            pointer: None,
+            cursor: None,
             events,
         }
     }

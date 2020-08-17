@@ -1,5 +1,6 @@
 use std::cmp::PartialOrd;
 
+/// Represents a point on the plane.
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct Point {
     pub x: f64,

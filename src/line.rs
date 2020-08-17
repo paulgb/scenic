@@ -1,12 +1,15 @@
 use crate::point::Point;
 use crate::polygon::Polygon;
 
+/// Orientation of the line relative to the x axis.
 #[derive(Debug, PartialEq)]
 pub enum LineOrientation {
-    Top,
-    Bottom,
+    LeftToRight,
+    RightToLeft,
 }
 
+/// Slope of the line, which is infinite in the case
+/// of a vertical line.
 #[derive(Debug, PartialEq)]
 enum LineSlope {
     FiniteSlope(f64),
@@ -14,6 +17,8 @@ enum LineSlope {
 }
 
 impl LineSlope {
+    /// Expect finite slope.
+    /// TODO: this is a hack until infinite slope is supported.
     pub fn unwrap(&self) -> f64 {
         match &self {
             LineSlope::FiniteSlope(f) => *f,
@@ -66,14 +71,14 @@ impl Line {
                 start,
                 end,
                 polygon,
-                orientation: LineOrientation::Top,
+                orientation: LineOrientation::LeftToRight,
             }
         } else {
             Line {
                 start: end,
                 end: start,
                 polygon,
-                orientation: LineOrientation::Bottom,
+                orientation: LineOrientation::RightToLeft,
             }
         }
     }
@@ -135,12 +140,12 @@ mod tests {
         let p2 = Point::new(6., 9.);
 
         let l1 = Line::new(p1, p2);
-        assert_eq!(LineOrientation::Top, l1.orientation);
+        assert_eq!(LineOrientation::LeftToRight, l1.orientation);
         assert_eq!(p1, l1.start);
         assert_eq!(p2, l1.end);
 
         let l2 = Line::new(p2, p1);
-        assert_eq!(LineOrientation::Bottom, l2.orientation);
+        assert_eq!(LineOrientation::RightToLeft, l2.orientation);
         assert_eq!(p1, l2.start);
         assert_eq!(p2, l2.end);
     }

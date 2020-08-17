@@ -1,9 +1,9 @@
-pub mod data_structures;
-pub mod debug_draw;
-pub mod line;
-pub mod point;
-pub mod polygon;
+mod data_structures;
+mod debug_draw;
+mod line;
+mod point;
+mod polygon;
 pub mod prelude;
 pub mod scanlines;
-pub mod scene;
-pub mod vertex;
+mod scene;
+mod vertex;

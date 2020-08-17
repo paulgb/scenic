@@ -48,18 +48,18 @@ mod tests {
         let lines = poly.lines;
         assert_eq!(p1, lines[0].start);
         assert_eq!(p4, lines[0].end);
-        assert_eq!(LineOrientation::Bottom, lines[0].orientation);
+        assert_eq!(LineOrientation::RightToLeft, lines[0].orientation);
 
         assert_eq!(p1, lines[1].start);
         assert_eq!(p2, lines[1].end);
-        assert_eq!(LineOrientation::Top, lines[1].orientation);
+        assert_eq!(LineOrientation::LeftToRight, lines[1].orientation);
 
         assert_eq!(p2, lines[2].start);
         assert_eq!(p3, lines[2].end);
-        assert_eq!(LineOrientation::Top, lines[2].orientation);
+        assert_eq!(LineOrientation::LeftToRight, lines[2].orientation);
 
         assert_eq!(p4, lines[3].start);
         assert_eq!(p3, lines[3].end);
-        assert_eq!(LineOrientation::Bottom, lines[3].orientation);
+        assert_eq!(LineOrientation::RightToLeft, lines[3].orientation);
     }
 }

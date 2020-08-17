@@ -20,7 +20,9 @@ const POINT_RADIUS: f64 = 0.15;
 // For SceneEvent renderer.
 const VERTEX_EVENT_FILL: &str = "red";
 const POINTER_FILL: &str = "blue";
+#[allow(unused)]
 const INTERSECTION_START_EVENT_FILL: &str = "purple";
+#[allow(unused)]
 const INTERSECTION_ENG_EVENT_FILL: &str = "orange";
 
 #[derive(Clone)]
@@ -232,7 +234,7 @@ impl DebugDraw {
             queue_group = queue_group.add(g);
         }
 
-        if let Some(p) = state.pointer {
+        if let Some(p) = state.cursor {
             queue_group = queue_group.add(self.point_circle(p, POINTER_FILL))
         }
 

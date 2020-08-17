@@ -4,6 +4,8 @@ use std::collections::BTreeSet;
 
 type LineCollection<'a> = BTreeSet<&'a Line>;
 
+/// Represents a point in space at which at least one line starts
+/// or ends. Multiple lines can start and end at the same vertex.
 #[derive(PartialEq, PartialOrd, Ord, Eq)]
 pub struct Vertex<'a> {
     pub point: Point,

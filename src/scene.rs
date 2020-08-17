@@ -3,6 +3,7 @@ use crate::polygon::Polygon;
 use crate::vertex::Vertex;
 use std::collections::BTreeMap;
 
+/// A container that owns multiple polygons.
 pub struct Scene {
     pub polys: Vec<Polygon>,
 }
@@ -16,17 +17,21 @@ impl<'a> Scene {
         self.polys.push(poly)
     }
 
+    /// Return vertices associated with the polygons in this scene
+    /// by iterating over the lines in each polygon.
     pub fn vertices(&'a self) -> Vec<Vertex<'a>> {
         let mut vertices: BTreeMap<Point, Vertex> = BTreeMap::new();
 
         for poly in &self.polys {
             for line in &poly.lines {
+                // Add vertex for start point.
                 vertices
                     .entry(line.start)
                     .or_insert_with(|| Vertex::new(line.start))
                     .start_lines
                     .insert(line);
 
+                // Add vertex for end point.
                 vertices
                     .entry(line.end)
                     .or_insert_with(|| Vertex::new(line.end))

@@ -48,7 +48,7 @@ pub fn main() {
     let mut i = 1;
     loop {
         let lines = scan_state.step();
-        let pointer = scan_state.pointer.unwrap();
+        let pointer = scan_state.cursor.unwrap();
 
         let mut d = DebugDraw::new();
 

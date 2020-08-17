@@ -3,12 +3,14 @@ use std::fmt::Debug;
 use std::pin::Pin;
 use std::ptr::NonNull;
 
+/// Node color, red or black.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Color {
     Red,
     Black,
 }
 
+/// Child's type with relation to its parent, left or right.
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum ChildType {
     Left,
@@ -17,7 +19,7 @@ enum ChildType {
 
 impl ChildType {
     /// Return the opposite ChildType.
-    fn flip(self) -> ChildType {
+    fn sibling_type(self) -> ChildType {
         match self {
             ChildType::Left => ChildType::Right,
             ChildType::Right => ChildType::Left,
@@ -141,7 +143,7 @@ impl<'position, T: Debug> TreePosition<'position, T> {
     /// Returns the position of this node's sibling, which may be a leaf node. Panics if this is a root node.
     fn sibling(&self) -> TreePosition<'position, T> {
         match self {
-            TreePosition::Child(ptr, ct) => TreePosition::Child(*ptr, ct.flip()),
+            TreePosition::Child(ptr, ct) => TreePosition::Child(*ptr, ct.sibling_type()),
             _ => panic!("Root does not have a sibling."),
         }
     }
@@ -242,10 +244,10 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
     fn rotate(&mut self, direction: ChildType) {
         let position = self.position.clone();
         let container = unsafe { self.position.get_container() };
-        let mut new_root = self.child_container_mut(direction.flip()).take().unwrap();
+        let mut new_root = self.child_container_mut(direction.sibling_type()).take().unwrap();
         let pivot_child = new_root.child_container_mut(direction).take();
 
-        self.set_child(pivot_child, direction.flip());
+        self.set_child(pivot_child, direction.sibling_type());
         new_root.set_child(container.take(), direction);
         position.set_pinned(Some(new_root));
     }
