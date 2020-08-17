@@ -7,7 +7,7 @@ use svg::Node;
 use crate::line::Line;
 use crate::point::Point;
 use crate::polygon::Polygon;
-use crate::scanlines::{LineEvent, ScanState, SceneEvent};
+use crate::scanlines::{ScanState, SceneEvent};
 use crate::scene::Scene;
 
 const MARGIN: f64 = 0.1;
@@ -222,8 +222,8 @@ impl DebugDraw {
 
                     g
                 }
-                SceneEvent::IntersectionEvent(p, line, line_event) => {
-                    let g = element::Group::new();
+                SceneEvent::IntersectionEvent(_p, _line, _line_event) => {
+                    let _g = element::Group::new();
                     // g
                     unimplemented!()
                 }

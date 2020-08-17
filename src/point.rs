@@ -1,4 +1,4 @@
-use std::cmp::{Ord, PartialOrd};
+use std::cmp::PartialOrd;
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct Point {

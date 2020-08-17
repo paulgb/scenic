@@ -1,7 +1,7 @@
 use crate::point::Point;
 use crate::polygon::Polygon;
 use crate::vertex::Vertex;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 pub struct Scene {
     pub polys: Vec<Polygon>,

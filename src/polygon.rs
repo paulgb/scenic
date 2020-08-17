@@ -1,7 +1,5 @@
 use crate::line::Line;
 use crate::point::Point;
-use crate::vertex::Vertex;
-use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug)]
 pub struct Polygon {
