@@ -244,7 +244,10 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
     fn rotate(&mut self, direction: ChildType) {
         let position = self.position.clone();
         let container = unsafe { self.position.get_container() };
-        let mut new_root = self.child_container_mut(direction.sibling_type()).take().unwrap();
+        let mut new_root = self
+            .child_container_mut(direction.sibling_type())
+            .take()
+            .unwrap();
         let pivot_child = new_root.child_container_mut(direction).take();
 
         self.set_child(pivot_child, direction.sibling_type());
