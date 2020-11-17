@@ -116,7 +116,7 @@ impl DebugDraw {
         })
     }
 
-    pub fn add_point<'a>(&'a mut self, point: Point) -> DebugGroupBuilder<'a, element::Circle> {
+    pub fn add_point(&mut self, point: Point) -> DebugGroupBuilder<element::Circle> {
         let c = element::Circle::new()
             .set("cx", point.x)
             .set("cy", point.y)
@@ -258,5 +258,11 @@ impl DebugDraw {
         let mut doc = self.doc.take().unwrap();
         doc = doc.set("viewBox", view_box);
         svg::save(filename, &doc).expect("Error writing.");
+    }
+}
+
+impl Default for DebugDraw {
+    fn default() -> DebugDraw {
+        DebugDraw::new()
     }
 }

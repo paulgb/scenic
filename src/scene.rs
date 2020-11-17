@@ -44,6 +44,12 @@ impl<'a> Scene {
     }
 }
 
+impl Default for Scene {
+    fn default() -> Scene {
+        Scene::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

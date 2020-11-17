@@ -117,10 +117,7 @@ impl<'position, T: Debug> Clone for TreePosition<'position, T> {
 
 impl<'position, T: Debug> TreePosition<'position, T> {
     fn is_root(&self) -> bool {
-        match &self {
-            TreePosition::Root(_) => true,
-            _ => false,
-        }
+        matches!(&self, TreePosition::Root(_))
     }
 
     /// Returns the parent to this node, if it exists.
@@ -265,7 +262,7 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
     }
 
     /// Repair the tree after a given newly inserted node.
-    fn repair_tree(&mut self) {
+    fn repair_tree_after_insert(&mut self) {
         let parent_container = unsafe { self.position.parent() };
 
         if let Some(RedBlackTreeNode {
@@ -287,7 +284,7 @@ impl<'node, T: Debug> RedBlackTreeNode<'node, T> {
                 parent.color = Color::Black;
                 uncle.unwrap().color = Color::Black;
                 grandparent.color = Color::Red;
-                grandparent.repair_tree();
+                grandparent.repair_tree_after_insert();
             } else {
                 // Insert case 4.
                 let rotate_direction =
@@ -380,9 +377,21 @@ impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
         self.node.key
     }
 
+    pub fn repair_tree_after_delete(self) {
+        let container = unsafe { self.node.position.get_container() };
+        let node = container.get_mut();
+        if let Some(r) = node {
+            if self.node.position.is_root() {
+                // Delete case 1: node is root; color black.
+                r.color = Color::Black;
+            } else {
+                unimplemented!()
+            }
+        }
+    }
+
     /// Delete the node from the tree.
     pub fn delete(self) {
-        let container = unsafe { self.node.position.get_container() };
         self.node_cache.remove(&(self.node.key as *const _));
 
         let replacement = if self.node.left_child.empty() {
@@ -394,18 +403,8 @@ impl<'cursor, 'tree, T: Debug> NodeCursor<'cursor, 'tree, T> {
         };
 
         self.node.position.set_pinned(replacement);
-        let node = container.get_mut();
 
-        match node {
-            Some(r) => {
-                if self.node.position.is_root() {
-                    r.color = Color::Black;
-                } else {
-                    unimplemented!()
-                }
-            }
-            None => (),
-        }
+        self.repair_tree_after_delete();
     }
 }
 
@@ -437,7 +436,7 @@ impl<'cursor, 'tree, T: Debug> LeafCursor<'cursor, 'tree, T> {
             node_cache: self.nodes,
         };
 
-        cur.node.repair_tree();
+        cur.node.repair_tree_after_insert();
 
         cur
     }
@@ -595,7 +594,7 @@ mod tests {
 
             assert_eq!(expected_node.color, actual_node.color);
             assert_eq!(expected_node.key, *actual_node.key);
-            assert!(actual_node.position == position);
+            assert_eq!(actual_node.position, position);
 
             // Ensure that the value in the tree matches this node.
             {
@@ -604,7 +603,7 @@ mod tests {
                     .expect("Node should be in nodes cache, but isn't.")
                     .as_ptr() as *const _;
                 let expected_node_ptr = actual_ptr as *const RedBlackTreeNode<_>;
-                assert!(actual_node_ptr == expected_node_ptr);
+                assert_eq!(actual_node_ptr, expected_node_ptr);
             }
 
             // Recurse left child.
@@ -672,12 +671,12 @@ mod tests {
         if let Some(node) = actual.get() {
             // Ensure that the node's reference to its position matches the position in the tree at which we
             // found it. (invariant #1)
-            assert!(node.position == position);
+            assert_eq!(node.position, position);
 
             if let Some(parent) = unsafe { node.position.parent() } {
                 // If this node has a red parent, this node should be black. (property #4)
                 if parent.color == Color::Red {
-                    assert!(node.color == Color::Black);
+                    assert_eq!(node.color, Color::Black);
                 }
             } else {
                 // If this node is the root, it should be black. (property #2)
@@ -689,7 +688,7 @@ mod tests {
                 let node_ptr =
                     nodes.remove(&(node.key as *const usize)).unwrap().as_ptr() as *const _;
                 let expected_node_ptr = node_ptr as *const RedBlackTreeNode<_>;
-                assert!(node_ptr == expected_node_ptr);
+                assert_eq!(node_ptr, expected_node_ptr);
             }
 
             // Recurse left child.
